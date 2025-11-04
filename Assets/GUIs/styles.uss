@@ -1,0 +1,3 @@
+.a-label-esta-com-a-min-width-e-nao-devia-estar > .unity-label {
+    min-width: 20px;
+}
