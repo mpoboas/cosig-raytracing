@@ -1,0 +1,69 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/GUIs/styles.uss?fileID=7433441132597879392&amp;guid=f785f6fb7da055148970aa21023acdc3&amp;type=3#styles" />
+    <ui:VisualElement name="Mega_Pai" style="flex-grow: 1; flex-direction: column-reverse;">
+        <ui:VisualElement name="Controlos" class="controlos-frame" style="flex-grow: 0; justify-content: flex-end; flex-basis: 30%; align-items: center; align-content: auto; align-self: auto; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: 0; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
+            <ui:VisualElement name="Linha1" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
+                <ui:VisualElement name="Image" class="controlos-frame" style="flex-grow: 1; flex-basis: 30%; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
+                    <ui:Label text="Image Controls" name="Label" />
+                    <ui:VisualElement name="Controlos_Image" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;">
+                        <ui:VisualElement name="Resolution" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start;">
+                            <ui:Label text="Resolution" name="Label" />
+                            <ui:TextField label="X" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                            <ui:TextField label="Y" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="BG_Color" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start; align-self: stretch;">
+                            <ui:Label text="BG Color" name="Label" />
+                            <ui:Slider label="Slider" value="42" high-value="100" direction="Horizontal" inverted="false" style="flex-direction: row; flex-grow: 1; align-self: stretch;" />
+                            <ui:Slider label="Slider" value="42" high-value="100" direction="Horizontal" inverted="false" style="flex-direction: row; flex-grow: 1; align-self: stretch;" />
+                            <ui:Slider label="Slider" value="42" high-value="100" direction="Horizontal" inverted="false" style="flex-direction: row; flex-grow: 1; align-self: stretch;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="RGB" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start;">
+                            <ui:Label text="RGB" name="Label" />
+                            <ui:TextField placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; flex-grow: 0;" />
+                            <ui:TextField placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; flex-grow: 0;" />
+                            <ui:TextField placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; flex-grow: 0;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement name="Lighting" class="controlos-frame" style="flex-grow: 1; flex-basis: 30%; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
+                    <ui:Label text="Lighting Controls" name="Label" />
+                    <ui:VisualElement name="Controlos_Lighting" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: column; justify-content: space-between; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;">
+                        <ui:VisualElement name="Reflections" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start; flex-wrap: wrap;">
+                            <ui:Toggle label="Ambient Reflection&#10;" style="flex-direction: row-reverse;" />
+                            <ui:Toggle label="Diffuse Reflection&#10;" style="flex-direction: row-reverse;" />
+                            <ui:Toggle label="Specular Reflection&#10;" style="flex-direction: row-reverse;" />
+                            <ui:Toggle label="Refraction&#10;" style="flex-direction: row-reverse;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="Intensity" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start; flex-direction: row; align-self: auto;">
+                            <ui:Slider value="42" high-value="100" style="flex-grow: 1;" />
+                            <ui:TextField label="Light Intensity" placeholder-text="3" name="Light_Intensity" style="flex-direction: row-reverse;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement name="Camera" class="controlos-frame" style="flex-grow: 1; flex-basis: 30%; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
+                    <ui:Label text="Camera Controls" name="Label" />
+                    <ui:VisualElement name="Controlos_Camera" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;">
+                        <ui:VisualElement name="Axis_Rotation" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-end;">
+                            <ui:Label text="Axis Rotation&#10;" name="Label" />
+                            <ui:Slider label="Slider" value="42" high-value="100" direction="Horizontal" inverted="false" style="flex-direction: row; flex-grow: 1; align-self: stretch;" />
+                            <ui:Slider label="Slider" value="42" high-value="100" direction="Horizontal" inverted="false" style="flex-direction: row; flex-grow: 1; align-self: stretch;" />
+                            <ui:Slider label="Slider" value="42" high-value="100" direction="Horizontal" inverted="false" style="flex-direction: row; flex-grow: 1; align-self: stretch;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="Pos" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-end;">
+                            <ui:TextField label="X" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; flex-grow: 0;" />
+                            <ui:TextField label="Y" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                            <ui:TextField label="Z" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="FOV" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-end;">
+                            <ui:TextField label="Fov" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; flex-grow: 0;" />
+                            <ui:TextField label="Pos X" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                            <ui:TextField label="Pos Y" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                            <ui:TextField label="Pos Z" placeholder-text="21" readonly="false" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="Linha2" style="flex-grow: 1; align-self: stretch;" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
