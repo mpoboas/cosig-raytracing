@@ -1,8 +1,27 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/GUIs/styles.uss?fileID=7433441132597879392&amp;guid=f785f6fb7da055148970aa21023acdc3&amp;type=3#styles" />
-    <ui:VisualElement name="Mega_Pai" style="flex-grow: 1; flex-direction: column-reverse;">
-        <ui:VisualElement name="Controlos" class="controlos-frame" style="flex-grow: 0; justify-content: flex-end; flex-basis: 30%; align-items: center; align-content: auto; align-self: auto; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: 0; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
-            <ui:VisualElement name="Linha1" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
+    <ui:VisualElement name="Mega_Pai" style="flex-grow: 1; flex-direction: column;">
+        <ui:VisualElement name="tab_local_global" style="flex-grow: 1; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 25px; padding-right: 15px; padding-bottom: 5px; padding-left: 15px; align-items: stretch; flex-direction: column;">
+            <ui:TabView reorderable="false" focusable="true" style="flex-grow: 1; flex-direction: column;">
+                <ui:Tab label="Global&#10;" name="Global" closeable="true" enabled="true" style="min-height: 450px; flex-grow: 1; background-color: rgb(255, 255, 255); flex-direction: row; justify-content: space-between; align-content: flex-start; align-self: stretch; align-items: stretch; flex-wrap: nowrap;">
+                    <ui:VisualElement name="ray-traced-container" style="flex-grow: 1; margin-left: 20px; margin-right: 20px; margin-top: 10px; margin-bottom: 10px; min-height: auto; width: auto; flex-direction: column; flex-basis: 35%;">
+                        <ui:VisualElement style="flex-grow: 1; -unity-background-image-tint-color: rgb(232, 0, 0); background-color: rgb(232, 0, 0); margin-top: 20px; margin-right: 60px; margin-bottom: 20px; margin-left: 60px; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;" />
+                        <ui:Label text="Ray Traced Image" style="-unity-text-align: upper-center;" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="progress-container" style="flex-grow: 1; margin-left: 20px; margin-right: 20px; margin-top: 10px; margin-bottom: 10px; min-height: auto; width: auto; flex-direction: column; flex-basis: 30%; align-self: stretch; align-content: flex-start; justify-content: center;">
+                        <ui:Label text="Elapsed Time: 00:00:21" style="-unity-text-align: upper-center; margin-bottom: 8px;" />
+                        <ui:ProgressBar value="90" style="flex-direction: column; -unity-background-scale-mode: stretch-to-fill; rotate: 0; transform-origin: center; scale: 1 1;" />
+                        <ui:Label text="Progress 90%" style="margin-top: 8px; -unity-text-align: upper-center;" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="3d-rendered-container" style="flex-grow: 1; margin-left: 20px; margin-right: 20px; margin-top: 10px; margin-bottom: 10px; min-height: auto; width: auto; flex-direction: column; flex-basis: 35%;">
+                        <ui:VisualElement style="flex-grow: 1; margin-top: 20px; margin-right: 60px; margin-bottom: 20px; margin-left: 60px; background-color: rgb(31, 31, 172);" />
+                        <ui:Label text="3D Rendered Image" style="-unity-text-align: upper-center;" />
+                    </ui:VisualElement>
+                </ui:Tab>
+            </ui:TabView>
+        </ui:VisualElement>
+        <ui:VisualElement name="Controlos" class="controlos-frame controls-min-height controls-height" style="flex-grow: 0; justify-content: flex-end; flex-basis: 30%; align-items: center; align-content: auto; align-self: auto; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-top-left-radius: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: 0; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
+            <ui:VisualElement name="Linha1" class="linha-1-min-height linha-1-height" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); max-height: none;">
                 <ui:VisualElement name="Image" class="controlos-frame" style="flex-grow: 1; flex-basis: 30%; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
                     <ui:Label text="Image Controls" name="Label" />
                     <ui:VisualElement name="Controlos_Image" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;">
@@ -28,15 +47,15 @@
                 <ui:VisualElement name="Lighting" class="controlos-frame" style="flex-grow: 1; flex-basis: 30%; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
                     <ui:Label text="Lighting Controls" name="Label" />
                     <ui:VisualElement name="Controlos_Lighting" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: column; justify-content: space-between; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;">
-                        <ui:VisualElement name="Reflections" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start; flex-wrap: wrap;">
-                            <ui:Toggle label="Ambient Reflection&#10;" style="flex-direction: row-reverse; flex-wrap: wrap;" />
-                            <ui:Toggle label="Diffuse Reflection&#10;" style="flex-direction: row-reverse;" />
-                            <ui:Toggle label="Specular Reflection&#10;" style="flex-direction: row-reverse;" />
-                            <ui:Toggle label="Refraction&#10;" style="flex-direction: row-reverse;" />
+                        <ui:VisualElement name="Reflections" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: stretch; justify-content: space-between; flex-wrap: wrap; align-self: auto; height: 100px;">
+                            <ui:Toggle label="Ambient Reflection&#10;" class="label-left-padding" style="flex-direction: row-reverse; flex-wrap: wrap;" />
+                            <ui:Toggle label="Diffuse Reflection&#10;" class="label-left-padding" style="flex-direction: row-reverse;" />
+                            <ui:Toggle label="Specular Reflection&#10;" class="label-left-padding" style="flex-direction: row-reverse;" />
+                            <ui:Toggle label="Refraction&#10;" class="label-left-padding" style="flex-direction: row-reverse;" />
                         </ui:VisualElement>
                         <ui:VisualElement name="Intensity" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start; flex-direction: row; align-self: auto;">
                             <ui:Slider value="42" high-value="100" style="flex-grow: 1;" />
-                            <ui:TextField label="Light Intensity" placeholder-text="3" name="Light_Intensity" style="flex-direction: row-reverse;" />
+                            <ui:TextField label="Light Intensity" placeholder-text="3" name="Light_Intensity" class="label-left-padding" style="flex-direction: row-reverse; justify-content: flex-start; align-items: stretch; padding-left: 8px;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
@@ -54,7 +73,7 @@
                             <ui:TextField label="Y" placeholder-text="21" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
                             <ui:TextField label="Z" placeholder-text="21" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
                         </ui:VisualElement>
-                        <ui:VisualElement name="FOV" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-end;">
+                        <ui:VisualElement name="FOV" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: flex-end; justify-content: flex-end;">
                             <ui:TextField label="Fov" placeholder-text="21" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; flex-grow: 0;" />
                             <ui:TextField label="Pos X" placeholder-text="21" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
                             <ui:TextField label="Pos Y" placeholder-text="21" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-direction: row; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
@@ -63,24 +82,24 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:VisualElement name="Linha2" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
-                <ui:VisualElement name="Image" style="flex-grow: 1; flex-basis: 33%; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
-                    <ui:Label text="Renderer" name="Label" />
+            <ui:VisualElement name="Linha2" class="linha-2-min-height linha-2-height" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58);">
+                <ui:VisualElement name="Renderer" style="flex-grow: 1; flex-basis: 33%; border-top-width: 1px; border-right-width: 1px; border-bottom-width: 1px; border-left-width: 1px; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px;">
+                    <ui:Label text="Renderer" name="Label" style="width: 298px;" />
                     <ui:VisualElement name="Controlos_Image" style="flex-grow: 1; align-content: auto; align-self: stretch; flex-direction: row; justify-content: space-between; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;">
                         <ui:VisualElement name="Resolution" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start;">
-                            <ui:TextField label="Recursion Depth" placeholder-text="021" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="flex-direction: row-reverse; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto;" />
+                            <ui:TextField label="Recursion Depth" placeholder-text="021" readonly="false" class="a-label-esta-com-a-min-width-e-nao-devia-estar label-left-padding" style="flex-direction: row-reverse; justify-content: flex-start; align-self: auto; align-content: flex-start; flex-basis: auto; height: 90%;" />
                         </ui:VisualElement>
-                        <ui:VisualElement name="BG_Color" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-start; align-self: stretch;">
-                            <ui:Button text="Start Ray Tracing" class="a-label-esta-com-a-min-width-e-nao-devia-estar" />
+                        <ui:VisualElement name="BG_Color" style="flex-grow: 1; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-content: center; align-items: center; justify-content: flex-end; align-self: stretch; height: 100%;">
+                            <ui:Button text="Start Ray Tracing" class="a-label-esta-com-a-min-width-e-nao-devia-estar" style="border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px; height: 100%; justify-content: flex-start;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                 </ui:VisualElement>
-                <ui:VisualElement name="Buttons" style="flex-grow: 1; flex-basis: 66%; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); border-top-width: 0; border-right-width: 0; border-bottom-width: 0; border-left-width: 0; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-items: center; justify-content: center; align-self: center; align-content: center; flex-direction: row;">
-                    <ui:Button text="Load Data" />
-                    <ui:Button text="Save Image" />
-                    <ui:Button text="Load Image" />
-                    <ui:Button text="Save Scene" />
-                    <ui:Button text="Exit" />
+                <ui:VisualElement name="Buttons" style="flex-grow: 1; flex-basis: 66%; border-left-color: rgb(58, 58, 58); border-right-color: rgb(58, 58, 58); border-top-color: rgb(58, 58, 58); border-bottom-color: rgb(58, 58, 58); border-top-width: 0; border-right-width: 0; border-bottom-width: 0; border-left-width: 0; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 5px; padding-right: 5px; padding-bottom: 5px; padding-left: 5px; align-items: center; justify-content: space-around; align-self: center; align-content: center; flex-direction: row; height: 100%;">
+                    <ui:Button text="Load Data" class="button" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
+                    <ui:Button text="Save Image" class="button" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
+                    <ui:Button text="Load Image" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
+                    <ui:Button text="Save Scene" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
+                    <ui:Button text="Exit" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

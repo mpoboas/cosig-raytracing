@@ -1,3 +1,59 @@
 .a-label-esta-com-a-min-width-e-nao-devia-estar > .unity-label {
     min-width: 20px;
 }
+
+.label-left-padding > .unity-label {
+    padding-left: 5px;
+}
+
+.linha-1-height {
+    min-height: 230px;
+    max-height: 250px;
+}
+
+.linha-2-height {
+    min-height: 100px;
+    max-height: 120px;
+}
+
+.controls-height {
+    min-height: 340px;
+    max-height: 380px;
+}
+
+.button {
+    width: 15%;
+    height: 70%;
+}
+.a-label-esta-com-a-min-width-e-nao-devia-estar > .unity-label {
+    min-width: 20px;
+}
+
+.label-left-padding > .unity-label {
+    padding-left: 5px;
+}
+
+.linha-1-height {
+    min-height: 230px;
+    max-height: 250px;
+}
+
+.linha-2-height {
+    min-height: 100px;
+    max-height: 120px
+}
+
+.controls-height {
+    min-height: 340px;
+    max-height: 380px
+}
+
+.button {
+    width: 15%;
+    height: 70%;
+}
+
+#unity-tab__content-container {
+    flex-direction: row;
+    width: 100%;
+}
