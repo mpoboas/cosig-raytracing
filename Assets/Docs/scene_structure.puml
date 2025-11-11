@@ -1,0 +1,153 @@
+@startuml Scene3D_Structure
+
+skinparam classAttributeIconSize 0
+skinparam class {
+    BackgroundColor LightYellow
+    BorderColor Black
+    ArrowColor Black
+}
+
+' Classes principais
+class Scene3D {
+    + Image image
+    + Camera camera
+    + List<Transformation> transformations
+    + List<Light> lights
+    + List<Material> materials
+    + List<Triangles> trianglesMeshes
+    + List<Sphere> spheres
+    + List<Box> boxes
+}
+
+class Image {
+    + int horizontal
+    + int vertical
+    + double red
+    + double green
+    + double blue
+}
+
+class Transformation {
+    + int index
+    + List<Transform> transforms
+}
+
+class Transform {
+    + string type
+    + double[] parameters
+}
+
+class Camera {
+    + int transformationIndex
+    + double distance
+    + double fieldOfView
+}
+
+class Light {
+    + int transformationIndex
+    + double red
+    + double green
+    + double blue
+}
+
+class Material {
+    + int index
+    + double red
+    + double green
+    + double blue
+    + double ambient
+    + double diffuse
+    + double specular
+    + double refraction
+    + double refractionIndex
+}
+
+class Triangles {
+    + int transformationIndex
+    + List<Triangle> triangles
+}
+
+class Triangle {
+    + int materialIndex
+    + Vertex vertex1
+    + Vertex vertex2
+    + Vertex vertex3
+}
+
+class Vertex {
+    + double x
+    + double y
+    + double z
+}
+
+class Sphere {
+    + int transformationIndex
+    + int materialIndex
+}
+
+class Box {
+    + int transformationIndex
+    + int materialIndex
+}
+
+' Relações
+Scene3D "1" *-- "1" Image : contém
+Scene3D "1" *-- "1" Camera : contém
+Scene3D "1" *-- "0..*" Transformation : contém
+Scene3D "1" *-- "0..*" Light : contém
+Scene3D "1" *-- "0..*" Material : contém
+Scene3D "1" *-- "0..*" Triangles : contém
+Scene3D "1" *-- "0..*" Sphere : contém
+Scene3D "1" *-- "0..*" Box : contém
+
+Transformation "1" *-- "1..*" Transform : composta por
+
+Camera "1" --> "1" Transformation : usa (por índice)
+Light "1" --> "1" Transformation : usa (por índice)
+Triangles "1" --> "1" Transformation : usa (por índice)
+Sphere "1" --> "1" Transformation : usa (por índice)
+Box "1" --> "1" Transformation : usa (por índice)
+
+Triangles "1" *-- "1..*" Triangle : contém
+Triangle "1" *-- "3" Vertex : tem
+Triangle "1" --> "1" Material : usa (por índice)
+
+Sphere "1" --> "1" Material : usa (por índice)
+Box "1" --> "1" Material : usa (por índice)
+
+note right of Scene3D
+  A cena 3D é composta por:
+  - 1 imagem (obrigatório)
+  - 1 câmara (obrigatório)
+  - N transformações (indexadas)
+  - N luzes
+  - N materiais (indexados)
+  - N malhas de triângulos
+  - N esferas
+  - N caixas
+end note
+
+note right of Transformation
+  Cada transformação tem um índice
+  (0, 1, 2, ...) e é referenciada
+  por outros objetos através
+  desse índice
+end note
+
+note right of Material
+  Cada material tem um índice
+  (0, 1, 2, ...) e é referenciado
+  por objetos geométricos através
+  desse índice
+end note
+
+note bottom of Transform
+  Tipos de transformação:
+  - T: Translação (x, y, z)
+  - Rx: Rotação em X (ângulo)
+  - Ry: Rotação em Y (ângulo)
+  - Rz: Rotação em Z (ângulo)
+  - S: Escala (x, y, z)
+end note
+
+@enduml

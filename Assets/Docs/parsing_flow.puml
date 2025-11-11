@@ -1,0 +1,83 @@
+@startuml Scene_Parsing_Flow
+
+skinparam packageStyle rectangle
+
+package "Ficheiro de Descrição 3D" {
+    [Image] as img
+    [Transformation 0..N] as trans
+    [Camera] as cam
+    [Light 0..N] as light
+    [Material 0..N] as mat
+    [Triangles 0..N] as tri
+    [Sphere 0..N] as sph
+    [Box 0..N] as box
+}
+
+package "Estruturas de Dados" {
+    database "Lista de Transformações\n(indexadas)" as transDB
+    database "Lista de Materiais\n(indexados)" as matDB
+    
+    component "Cena 3D" as scene {
+        [Configuração Imagem]
+        [Configuração Câmara]
+        [Fontes de Luz]
+        [Objetos Geométricos]
+    }
+}
+
+' Parsing direto (sem dependências)
+img --> [Configuração Imagem] : parse
+trans --> transDB : parse e indexa
+
+' Parsing com dependência de transformações
+cam --> [Configuração Câmara] : parse
+cam ..> transDB : referencia índice
+
+light --> [Fontes de Luz] : parse
+light ..> transDB : referencia índice
+
+' Parsing de materiais (indexados)
+mat --> matDB : parse e indexa
+
+' Parsing de objetos geométricos (com dupla dependência)
+tri --> [Objetos Geométricos] : parse
+tri ..> transDB : referencia índice
+tri ..> matDB : referencia índice
+
+sph --> [Objetos Geométricos] : parse
+sph ..> transDB : referencia índice
+sph ..> matDB : referencia índice
+
+box --> [Objetos Geométricos] : parse
+box ..> transDB : referencia índice
+box ..> matDB : referencia índice
+
+note right of transDB
+  As transformações devem ser
+  processadas PRIMEIRO porque
+  são referenciadas por outros
+  segmentos através de índices
+end note
+
+note right of matDB
+  Os materiais devem ser
+  processados ANTES dos
+  objetos geométricos
+end note
+
+note bottom of img
+  Obrigatório: 1 segmento
+  Propriedades:
+  - Resolução (horizontal, vertical)
+  - Cor de fundo (R, G, B)
+end note
+
+note bottom of cam
+  Obrigatório: 1 segmento
+  Propriedades:
+  - Índice de transformação
+  - Distância ao plano projeção
+  - Campo de visão (FOV)
+end note
+
+@enduml

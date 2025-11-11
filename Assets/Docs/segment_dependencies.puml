@@ -1,0 +1,123 @@
+@startuml Segment_Dependencies
+
+skinparam linetype ortho
+
+' Nível 0 - Independentes (processados primeiro)
+rectangle "**Nível 0: Segmentos Independentes**" #LightBlue {
+    card "**Image**\n(obrigatório: 1)" as img {
+        :horizontal: int
+        :vertical: int
+        :background color: RGB
+    }
+    
+    card "**Transformation**\n(0..N indexadas)" as trans {
+        :index: int
+        :transforms: List
+        --
+        T, Rx, Ry, Rz, S
+    }
+    
+    card "**Material**\n(0..N indexados)" as mat {
+        :index: int
+        :color: RGB
+        :ambient, diffuse
+        :specular, refraction
+        :refractionIndex
+    }
+}
+
+' Nível 1 - Dependem de Transformation
+rectangle "**Nível 1: Dependem de Transformation**" #LightYellow {
+    card "**Camera**\n(obrigatório: 1)" as cam {
+        :transformationIndex: int
+        :distance: double
+        :fieldOfView: double
+    }
+    
+    card "**Light**\n(0..N)" as light {
+        :transformationIndex: int
+        :color: RGB
+    }
+}
+
+' Nível 2 - Dependem de Transformation e Material
+rectangle "**Nível 2: Dependem de Transform + Material**" #LightGreen {
+    card "**Triangles**\n(0..N meshes)" as tri {
+        :transformationIndex: int
+        --
+        Por cada triângulo:
+        :materialIndex: int
+        :vertex1, vertex2, vertex3
+    }
+    
+    card "**Sphere**\n(0..N)" as sph {
+        :transformationIndex: int
+        :materialIndex: int
+    }
+    
+    card "**Box**\n(0..N)" as box {
+        :transformationIndex: int
+        :materialIndex: int
+    }
+}
+
+' Dependências
+trans -down-> cam : fornece índice
+trans -down-> light : fornece índice
+
+trans -down-> tri : fornece índice
+mat -down-> tri : fornece índice
+
+trans -down-> sph : fornece índice
+mat -down-> sph : fornece índice
+
+trans -down-> box : fornece índice
+mat -down-> box : fornece índice
+
+note right of trans
+  **Transformação Composta:**
+  Sequência ordenada de:
+  • T x y z (translação)
+  • Rx, Ry, Rz ângulo (rotação)
+  • S x y z (escala)
+  
+  A transformação afeta a cena,
+  não a câmara!
+end note
+
+note right of mat
+  **Propriedades Materiais:**
+  • Cor base (RGB)
+  • Coeficientes de iluminação
+  • Propriedades de refração
+end note
+
+note bottom of cam
+  **Posição da Câmara:**
+  Sempre em (0, 0, distância)
+  Orientada para -Z
+  Vector up: (0, 1, 0)
+  
+  A transformação movimenta
+  a CENA, não a câmara!
+end note
+
+note bottom of tri
+  **Ordem dos Vértices:**
+  Sentido anti-horário
+  define a face frontal
+  do triângulo
+end note
+
+legend right
+  |= Cardinalidade |
+  | **1** | Obrigatório (exatamente 1) |
+  | **0..N** | Opcional (zero ou mais) |
+  
+  |= Ordem de Processamento |
+  | **1º** | Image, Transformation, Material |
+  | **2º** | Camera, Light |
+  | **3º** | Triangles, Sphere, Box |
+endlegend
+
+@enduml
