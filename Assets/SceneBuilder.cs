@@ -123,7 +123,7 @@ public class SceneBuilder : MonoBehaviour
             return;
         }
         var m = data.Materials[materialIndex];
-        var mat = new Material(baseMaterial);
+        var mat = CreateMaterialInstance();
         mat.color = m.color; // map base color
         // Map some coefficients to Unity standard shader heuristically
         if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", Mathf.Clamp01(m.specular));
@@ -134,8 +134,26 @@ public class SceneBuilder : MonoBehaviour
     // Apply a solid color material (for light markers)
     void ApplySolidColor(GameObject obj, Color c)
     {
-        var mat = new Material(baseMaterial);
+        var mat = CreateMaterialInstance();
         mat.color = c;
         obj.GetComponent<Renderer>().material = mat;
+    }
+
+    // Safely create a material instance from baseMaterial; fall back to Standard shader if not assigned
+    Material CreateMaterialInstance()
+    {
+        Material source = baseMaterial;
+        if (source == null)
+        {
+            var fallbackShader = Shader.Find("Standard");
+            if (fallbackShader == null)
+            {
+                Debug.LogWarning("Standard shader not found. Creating a default material.");
+                return new Material(Shader.Find("Diffuse"));
+            }
+            Debug.LogWarning("baseMaterial not assigned in SceneBuilder. Using Standard shader as fallback.");
+            source = new Material(fallbackShader);
+        }
+        return new Material(source);
     }
 }
