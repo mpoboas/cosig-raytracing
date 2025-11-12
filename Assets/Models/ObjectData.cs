@@ -1,118 +1,175 @@
-using System;
+using System.Collections.Generic;
 using UnityEngine;
 
-namespace Models
+// Data structures mirroring the scene description format (Image, Transformation, Camera, Light, Material, Triangles, Sphere, Box)
+[System.Serializable]
+public class ObjectData
 {
-    /// <summary>
-    /// Serializable container for scene object properties used by the raytracer/systems.
-    /// Kept minimal and engine-friendly (uses UnityEngine types) so it can be serialized
-    /// in ScriptableObjects or JSON if needed.
-    /// </summary>
-    [Serializable]
-    public class ObjectData
+    // One and only one Image segment
+    public ImageSettings Image;
+
+    // Zero or more composite transformations, referenced by index elsewhere
+    public List<CompositeTransformation> Transformations = new List<CompositeTransformation>();
+
+    // One and only one Camera segment
+    public CameraSettings Camera;
+
+    // Zero or more Light segments
+    public List<LightSource> Lights = new List<LightSource>();
+
+    // Zero or more Material segments, referenced by index elsewhere
+    public List<MaterialDescription> Materials = new List<MaterialDescription>();
+
+    // Zero or more triangle meshes
+    public List<TrianglesMesh> TriangleMeshes = new List<TrianglesMesh>();
+
+    // Zero or more spheres
+    public List<SphereDescription> Spheres = new List<SphereDescription>();
+
+    // Zero or more boxes
+    public List<BoxDescription> Boxes = new List<BoxDescription>();
+}
+
+[System.Serializable]
+public class ImageSettings
+{
+    // Horizontal and vertical resolution in pixels (integer > 0)
+    public int horizontal = 0;
+    public int vertical = 0;
+
+    // Background color components (0.0 .. 1.0)
+    public Color background = Color.black;
+}
+
+// A composite transformation is an ordered list of elementary operations
+[System.Serializable]
+public class CompositeTransformation
+{
+    public List<TransformElement> Elements = new List<TransformElement>();
+}
+
+public enum TransformType
+{
+    T,   // Translation
+    Rx,  // Rotation about X in degrees
+    Ry,  // Rotation about Y in degrees
+    Rz,  // Rotation about Z in degrees
+    S    // Scale
+}
+
+[System.Serializable]
+public struct TransformElement
+{
+    public TransformType Type;
+
+    // Parameters:
+    // - For T and S: use XYZ as vector components
+    // - For Rx / Ry / Rz: use AngleDeg (XYZ ignored)
+    public Vector3 XYZ;
+    public float AngleDeg;
+
+    public static TransformElement Translation(Vector3 t)
     {
-        /// <summary>
-        /// Unique identifier for this object (optional).
-        /// </summary>
-        public string Id;
-
-        /// <summary>
-        /// Friendly name for editors and debugging.
-        /// </summary>
-        public string Name;
-
-        /// <summary>
-        /// Local position in the scene.
-        /// </summary>
-        public Vector3 Position;
-
-        /// <summary>
-        /// Local rotation as quaternion.
-        /// </summary>
-        public Quaternion Rotation = Quaternion.identity;
-
-        /// <summary>
-        /// Local scale.
-        /// </summary>
-        public Vector3 Scale = Vector3.one;
-
-        /// <summary>
-        /// The shape type for this object. Adjust in raytracing/systems to support.
-        /// </summary>
-        public ShapeType Shape = ShapeType.Mesh;
-
-        /// <summary>
-        /// Base color / albedo.
-        /// </summary>
-        public Color Albedo = Color.grey;
-
-        /// <summary>
-        /// Emission color (used if object is a light or emissive material).
-        /// </summary>
-        public Color Emission = Color.black;
-
-        /// <summary>
-        /// When true this object contributes as an emissive light source.
-        /// </summary>
-        public bool IsLight = false;
-
-        /// <summary>
-        /// Intensity multiplier when used as a light.
-        /// </summary>
-        public float Intensity = 1f;
-
-        /// <summary>
-        /// Generic metallic factor (0..1) for simple PBR-like material.
-        /// </summary>
-        [Range(0f, 1f)]
-        public float Metallic = 0f;
-
-        /// <summary>
-        /// Generic smoothness/roughness factor (0..1).
-        /// </summary>
-        [Range(0f, 1f)]
-        public float Smoothness = 0.5f;
-
-        /// <summary>
-        /// Optional path or GUID to a Mesh asset when Shape == Mesh.
-        /// Keep empty if the runtime supplies geometry differently.
-        /// </summary>
-        public string MeshAssetPath;
-
-        /// <summary>
-        /// Optional user data or metadata in JSON form.
-        /// </summary>
-        public string Metadata;
-
-        /// <summary>
-        /// Default constructor.
-        /// </summary>
-        public ObjectData() { }
-
-        /// <summary>
-        /// Convenience constructor to set core transform values.
-        /// </summary>
-        public ObjectData(string id, string name, Vector3 position, Quaternion rotation, Vector3 scale)
-        {
-            Id = id;
-            Name = name;
-            Position = position;
-            Rotation = rotation;
-            Scale = scale;
-        }
+        return new TransformElement { Type = TransformType.T, XYZ = t, AngleDeg = 0f };
     }
 
-    /// <summary>
-    /// Fundamental supported shape types.
-    /// Add more as the systems require (e.g. Sphere/Plane/Triangle).
-    /// </summary>
-    public enum ShapeType
+    public static TransformElement Scale(Vector3 s)
     {
-        Mesh = 0,
-        Sphere = 1,
-        Plane = 2,
-        Triangle = 3,
-        Custom = 100
+        return new TransformElement { Type = TransformType.S, XYZ = s, AngleDeg = 0f };
     }
+
+    public static TransformElement RotationX(float angleDeg)
+    {
+        return new TransformElement { Type = TransformType.Rx, XYZ = Vector3.zero, AngleDeg = angleDeg };
+    }
+
+    public static TransformElement RotationY(float angleDeg)
+    {
+        return new TransformElement { Type = TransformType.Ry, XYZ = Vector3.zero, AngleDeg = angleDeg };
+    }
+
+    public static TransformElement RotationZ(float angleDeg)
+    {
+        return new TransformElement { Type = TransformType.Rz, XYZ = Vector3.zero, AngleDeg = angleDeg };
+    }
+}
+
+[System.Serializable]
+public class CameraSettings
+{
+    // Index of composite transformation (integer >= 0)
+    public int transformationIndex = 0;
+
+    // Distance to projection plane z=0 (double > 0.0)
+    public float distance = 1.0f;
+
+    // Vertical field of view in degrees (double > 0.0)
+    public float verticalFovDeg = 60.0f;
+}
+
+[System.Serializable]
+public class LightSource
+{
+    // Index of composite transformation (integer >= 0)
+    public int transformationIndex = 0;
+
+    // Light color/intensity (0.0 .. 1.0)
+    public Color rgb = Color.white;
+}
+
+[System.Serializable]
+public class MaterialDescription
+{
+    // Base color (0.0 .. 1.0)
+    public Color color = Color.white;
+
+    // Coefficients (0.0 .. 1.0)
+    public float ambient = 0.0f;
+    public float diffuse = 0.0f;
+    public float specular = 0.0f;
+    public float refraction = 0.0f;
+
+    // Index of refraction (double >= 1.0)
+    public float ior = 1.0f;
+}
+
+[System.Serializable]
+public class TrianglesMesh
+{
+    // Index of composite transformation applied to all triangles
+    public int transformationIndex = 0;
+
+    public List<Triangle> Triangles = new List<Triangle>();
+}
+
+[System.Serializable]
+public struct Triangle
+{
+    // Material index for this triangle
+    public int materialIndex;
+
+    public Vector3 v0;
+    public Vector3 v1;
+    public Vector3 v2;
+
+    public Triangle(int material, Vector3 a, Vector3 b, Vector3 c)
+    {
+        materialIndex = material;
+        v0 = a; v1 = b; v2 = c;
+    }
+}
+
+[System.Serializable]
+public class SphereDescription
+{
+    public int transformationIndex = 0;
+    public int materialIndex = 0;
+}
+
+[System.Serializable]
+public class BoxDescription
+{
+    public int transformationIndex = 0;
+    public int materialIndex = 0;
 }
 
