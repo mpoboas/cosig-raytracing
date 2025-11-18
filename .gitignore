@@ -120,3 +120,5 @@ InitTestScene*.unity*
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
 .idea/
+
+Assets/.DS_Store
