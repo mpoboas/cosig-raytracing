@@ -256,24 +256,27 @@ public class RayTracer
         Matrix4x4 M = Matrix4x4.identity;
         foreach (var e in comp.Elements)
         {
+            Matrix4x4 transform = Matrix4x4.identity;
             switch (e.Type)
             {
                 case TransformType.T:
-                    M = Matrix4x4.Translate(e.XYZ) * M;
+                    transform = Matrix4x4.Translate(e.XYZ);
                     break;
                 case TransformType.S:
-                    M = Matrix4x4.Scale(e.XYZ) * M;
+                    transform = Matrix4x4.Scale(e.XYZ);
                     break;
                 case TransformType.Rx:
-                    M = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.right)) * M;
+                    transform = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.right));
                     break;
                 case TransformType.Ry:
-                    M = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.up)) * M;
+                    transform = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.up));
                     break;
                 case TransformType.Rz:
-                    M = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.forward)) * M;
+                    transform = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.forward));
                     break;
             }
+            // Aplica a transformação atual à direita da matriz acumulada (M = M * transform)
+            M = M * transform;
         }
         return M;
     }

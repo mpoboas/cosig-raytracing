@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.UIElements;
+using System.IO;
 // Unity component responsible for constructing and rendering the scene based on loaded data 
 public class SceneBuilder : MonoBehaviour
 {
@@ -10,7 +12,7 @@ public class SceneBuilder : MonoBehaviour
     private ObjectData scene; // Parsed scene 
     void Start()
     {
-        string filePath = "Assets/Resources/Scenes/test_scene_1.txt"; // Path to the scene description file 
+        string filePath = "Assets/Resources/Scenes/eval_scene.txt"; // Path to the scene description file 
         scene = sceneService.LoadScene(filePath); // Parse scene
         LogSceneSummary(scene); // Debug: show parser output
         // Render via ray tracer (no Unity primitives)
@@ -19,13 +21,42 @@ public class SceneBuilder : MonoBehaviour
         string outPath = "Assets/Output/render.png";
         RayTracer.SaveTexture(tex, outPath);
         Debug.Log($"Ray tracing complete. Saved to {outPath}");
-        // Optionally display on a UI RawImage if present in the scene
-        var rawImage = FindObjectOfType<RawImage>();
-        if (rawImage != null)
+        // Display on UI Toolkit VisualElement if present
+        var uiDocument = FindObjectOfType<UIDocument>();
+        if (uiDocument != null)
         {
-            rawImage.texture = tex;
-            rawImage.rectTransform.sizeDelta = new Vector2(tex.width, tex.height);
-            Debug.Log("Displayed render on RawImage.");
+            // Get the container for the ray-traced image
+            var container = uiDocument.rootVisualElement.Q<VisualElement>("ray-traced-image");
+            if (container != null)
+            {
+                // Clear any existing content
+                container.Clear();
+                
+                // Create a new UI Toolkit Image element
+                var image = new UnityEngine.UIElements.Image();
+                
+                // Convert the Texture2D to a Sprite
+                var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                image.sprite = sprite;
+                
+                // Set image to scale to fit the container while maintaining aspect ratio
+                image.style.width = new StyleLength(Length.Percent(100));
+                image.style.height = new StyleLength(Length.Percent(100));
+                image.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+                
+                // Add the image to the container
+                container.Add(image);
+                
+                Debug.Log("Displayed render on UI Toolkit VisualElement.");
+            }
+            else
+            {
+                Debug.LogWarning("Could not find 'ray-traced-image' VisualElement in the UI Document.");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("No UIDocument found in the scene to display the rendered image.");
         }
     }
 

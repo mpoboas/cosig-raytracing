@@ -5,7 +5,7 @@
             <ui:TabView reorderable="false" focusable="true" style="flex-grow: 1; flex-direction: column;">
                 <ui:Tab label="Global&#10;" name="Global" closeable="true" enabled="true" style="min-height: 450px; flex-grow: 1; background-color: rgb(255, 255, 255); flex-direction: row; justify-content: space-between; align-content: flex-start; align-self: stretch; align-items: stretch; flex-wrap: nowrap;">
                     <ui:VisualElement name="ray-traced-container" style="flex-grow: 1; margin-left: 20px; margin-right: 20px; margin-top: 10px; margin-bottom: 10px; min-height: auto; width: auto; flex-direction: column; flex-basis: 35%;">
-                        <ui:VisualElement style="flex-grow: 1; -unity-background-image-tint-color: rgb(232, 0, 0); background-color: rgb(232, 0, 0); margin-top: 20px; margin-right: 60px; margin-bottom: 20px; margin-left: 60px; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;" />
+                        <ui:VisualElement name="ray-traced-image" style="flex-grow: 1; -unity-background-image-tint-color: rgb(232, 0, 0); background-color: rgb(232, 0, 0); margin-top: 20px; margin-right: 60px; margin-bottom: 20px; margin-left: 60px; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0;" />
                         <ui:Label text="Ray Traced Image" style="-unity-text-align: upper-center;" />
                     </ui:VisualElement>
                     <ui:VisualElement name="progress-container" style="flex-grow: 1; margin-left: 20px; margin-right: 20px; margin-top: 10px; margin-bottom: 10px; min-height: auto; width: auto; flex-direction: column; flex-basis: 30%; align-self: stretch; align-content: flex-start; justify-content: center;">
