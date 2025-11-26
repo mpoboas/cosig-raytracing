@@ -5,26 +5,8 @@ using UnityEngine;
 
 public class RayTracer
 {
-    struct Ray
-    {
-        public Vector3 origin;
-        public Vector3 dir;
-    }
+    // We use UnityEngine.Ray and the HitRecord defined in IHittable.cs
 
-    struct Hit
-    {
-        public float t;
-        public Vector3 positionWS;
-        public Vector3 normalWS;
-        public int materialIndex;
-        public bool hit;
-    }
-
-    /// <summary>
-    /// Renders the scene to a Texture2D using ray tracing.
-    /// </summary>
-    /// <param name="scene">The scene data containing objects, lights, and camera settings.</param>
-    /// <returns>A Texture2D containing the rendered image.</returns>
     public Texture2D Render(ObjectData scene)
     {
         int width = Mathf.Max(1, scene.Image != null ? scene.Image.horizontal : 256);
@@ -52,54 +34,18 @@ public class RayTracer
             lightPoints.Add((pos, light.rgb));
         }
 
-        // Extra diagnostics: sample object placements
-        if (scene.Spheres.Count > 0)
-        {
-            var s = scene.Spheres[0];
-            var objectToWorldMatrix = sceneMat * BuildByIndex(scene, s.transformationIndex);
-            Vector3 c = objectToWorldMatrix.MultiplyPoint3x4(Vector3.zero);
-            Debug.Log($"[RT] Sphere[0] center WS ~ {c}");
-        }
-        if (scene.Boxes.Count > 0)
-        {
-            var b = scene.Boxes[0];
-            var objectToWorldMatrix = sceneMat * BuildByIndex(scene, b.transformationIndex);
-            Vector3 c = objectToWorldMatrix.MultiplyPoint3x4(Vector3.zero);
-            Debug.Log($"[RT] Box[0] center WS ~ {c}");
-        }
+        // --- Build BVH ---
+        Debug.Log("[RT] Building BVH...");
+        IHittable bvhRoot = BuildBVH(scene, sceneMat);
+        Debug.Log("[RT] BVH Built.");
 
         // --- Projection Plane Calculations ---
-        // Compute camera distance and image plane size early so diagnostics can use them
         float cameraDistance = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.distance) : 1f;
         float verticalFov = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.verticalFovDeg) : 60f;
         float aspect = (float)width / (float)height;
         float halfHeight = cameraDistance * Mathf.Tan(0.5f * verticalFov * Mathf.Deg2Rad);
         float planeHeight = 2f * halfHeight;
         float planeWidth = planeHeight * aspect;
-
-        if (scene.TriangleMeshes.Count > 0 && scene.TriangleMeshes[0].Triangles.Count > 0)
-        {
-            var m = scene.TriangleMeshes[0];
-            var objectToWorldMatrix = sceneMat * BuildByIndex(scene, m.transformationIndex);
-            var tri = m.Triangles[0];
-            Vector3 v0_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v0);
-            Vector3 v1_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v1);
-            Vector3 v2_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v2);
-            Debug.Log($"[RT] Tri[0] v0.z={v0_WS.z:F2} v1.z={v1_WS.z:F2} v2.z={v2_WS.z:F2}");
-            // Project v0_WS to z=0 along line from camera (0,0,cameraDistance)
-            if (Mathf.Abs(v0_WS.z - 0f) > 1e-6f)
-            {
-                float tProj = (0f - cameraDistance) / (v0_WS.z - cameraDistance); // param along line from cam to v0_WS to reach z=0
-                Vector3 aOnPlane = new Vector3(0, 0, cameraDistance) + tProj * (v0_WS - new Vector3(0, 0, cameraDistance));
-                Debug.Log($"[RT] Tri[0].v0 projected on z=0: x'={aOnPlane.x:F2}, y'={aOnPlane.y:F2}; plane halfW={planeWidth / 2f:F2}, halfH={planeHeight / 2f:F2}");
-            }
-            // World-space intersection test for center ray
-            Ray centerRay = new Ray { origin = new Vector3(0, 0, cameraDistance), dir = new Vector3(0, 0, -1) };
-            if (IntersectTriangleWS(centerRay, v0_WS, v1_WS, v2_WS, out float distWorldSpace, out _))
-            {
-                Debug.Log($"[RT] Center ray hits Tri[0] in WS at t={distWorldSpace:F3}");
-            }
-        }
 
         // --- Main Ray Tracing Loop ---
         int cy = height / 2; int cx = width / 2; // center pixel for debugging
@@ -110,20 +56,19 @@ public class RayTracer
                 // Calculate ray direction through the pixel
                 float u = ((x + 0.5f) / width - 0.5f) * planeWidth;
                 float v = ((y + 0.5f) / height - 0.5f) * planeHeight;
-                Ray ray = new Ray
-                {
-                    origin = new Vector3(0f, 0f, cameraDistance),
-                    dir = new Vector3(u, v, -cameraDistance).normalized
-                };
+                
+                // UnityEngine.Ray takes origin and direction
+                Vector3 rayDir = new Vector3(u, v, -cameraDistance).normalized;
+                Ray ray = new Ray(new Vector3(0f, 0f, cameraDistance), rayDir);
 
                 bool dbg = (x == cx && y == cy);
                 if (dbg)
                 {
-                    Debug.Log($"[RT] Center pixel ray origin={ray.origin} dir={ray.dir}");
+                    Debug.Log($"[RT] Center pixel ray origin={ray.origin} dir={ray.direction}");
                 }
                 
                 // Trace the ray and get the color
-                Color c = TracePrimary(scene, sceneMat, lightPoints, ray, backgroundColor, dbg);
+                Color c = TracePrimary(scene, lightPoints, bvhRoot, ray, backgroundColor, dbg);
                 outputTexture.SetPixel(x, y, c);
             }
         }
@@ -132,114 +77,67 @@ public class RayTracer
         return outputTexture;
     }
 
-    Color TracePrimary(ObjectData scene, Matrix4x4 sceneMat, List<(Vector3 posWS, Color rgb)> lights, Ray rayWS, Color backgroundColor, bool debug = false)
+    IHittable BuildBVH(ObjectData scene, Matrix4x4 sceneMat)
     {
-        Hit bestHit = new Hit { t = float.MaxValue, hit = false };
-        float bestSphereDist = float.PositiveInfinity;
-        float bestBoxDist = float.PositiveInfinity;
-        float bestTriDist = float.PositiveInfinity;
+        List<IHittable> objects = new List<IHittable>();
 
-        // --- Sphere Intersections ---
+        // Spheres
         for (int i = 0; i < scene.Spheres.Count; i++)
         {
             var s = scene.Spheres[i];
-            Matrix4x4 objectToWorldMatrix = sceneMat * BuildByIndex(scene, s.transformationIndex);
-            Matrix4x4 worldToObjectMatrix = objectToWorldMatrix.inverse;
-            
-            // Transform ray to object space
-            Ray rayObjectSpace = TransformRay(worldToObjectMatrix, rayWS);
-            
-            if (IntersectUnitSphere(rayObjectSpace, out float distObjectSpace))
-            {
-                Vector3 pointObjectSpace = rayObjectSpace.origin + distObjectSpace * rayObjectSpace.dir;
-                Vector3 normalObjectSpace = pointObjectSpace.normalized;
-                
-                // Transform hit point and normal back to world space
-                Vector3 pointWorldSpace = objectToWorldMatrix.MultiplyPoint3x4(pointObjectSpace);
-                Vector3 normalWorldSpace = (worldToObjectMatrix.transpose.MultiplyVector(normalObjectSpace)).normalized;
-                
-                float distWorldSpace = (pointWorldSpace - rayWS.origin).magnitude;
-                if (distWorldSpace < bestSphereDist) bestSphereDist = distWorldSpace;
-                
-                if (distWorldSpace > 1e-4f && distWorldSpace < bestHit.t)
-                {
-                    bestHit = new Hit { t = distWorldSpace, hit = true, positionWS = pointWorldSpace, normalWS = normalWorldSpace, materialIndex = s.materialIndex };
-                }
-            }
+            Matrix4x4 objectToWorld = sceneMat * BuildByIndex(scene, s.transformationIndex);
+            objects.Add(new SphereInstance(s.materialIndex, objectToWorld));
         }
 
-        // --- Box Intersections ---
-        // Boxes are unit cubes centered at origin, bounds [-0.5, 0.5]
+        // Boxes
         for (int i = 0; i < scene.Boxes.Count; i++)
         {
             var b = scene.Boxes[i];
-            Matrix4x4 objectToWorldMatrix = sceneMat * BuildByIndex(scene, b.transformationIndex);
-            Matrix4x4 worldToObjectMatrix = objectToWorldMatrix.inverse;
-            
-            Ray rayObjectSpace = TransformRay(worldToObjectMatrix, rayWS);
-            
-            if (IntersectUnitBox(rayObjectSpace, out float distObjectSpace, out Vector3 normalObjectSpace))
-            {
-                Vector3 pointObjectSpace = rayObjectSpace.origin + distObjectSpace * rayObjectSpace.dir;
-                
-                Vector3 pointWorldSpace = objectToWorldMatrix.MultiplyPoint3x4(pointObjectSpace);
-                Vector3 normalWorldSpace = (worldToObjectMatrix.transpose.MultiplyVector(normalObjectSpace)).normalized;
-                
-                float distWorldSpace = (pointWorldSpace - rayWS.origin).magnitude;
-                if (distWorldSpace < bestBoxDist) bestBoxDist = distWorldSpace;
-                
-                if (distWorldSpace > 1e-4f && distWorldSpace < bestHit.t)
-                {
-                    bestHit = new Hit { t = distWorldSpace, hit = true, positionWS = pointWorldSpace, normalWS = normalWorldSpace, materialIndex = b.materialIndex };
-                }
-            }
+            Matrix4x4 objectToWorld = sceneMat * BuildByIndex(scene, b.transformationIndex);
+            objects.Add(new BoxInstance(b.materialIndex, objectToWorld));
         }
 
-        // --- Triangle Intersections ---
-        // Intersect in world space to avoid numeric issues with non-uniform transforms
+        // Triangles
         for (int mi = 0; mi < scene.TriangleMeshes.Count; mi++)
         {
             var m = scene.TriangleMeshes[mi];
-            Matrix4x4 objectToWorldMatrix = sceneMat * BuildByIndex(scene, m.transformationIndex);
-            // Matrix4x4 worldToObjectMatrix = objectToWorldMatrix.inverse; // Not used for world space intersection
+            Matrix4x4 objectToWorld = sceneMat * BuildByIndex(scene, m.transformationIndex);
             
             for (int ti = 0; ti < m.Triangles.Count; ti++)
             {
                 var tri = m.Triangles[ti];
-                Vector3 v0_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v0);
-                Vector3 v1_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v1);
-                Vector3 v2_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v2);
+                Vector3 v0_WS = objectToWorld.MultiplyPoint3x4(tri.v0);
+                Vector3 v1_WS = objectToWorld.MultiplyPoint3x4(tri.v1);
+                Vector3 v2_WS = objectToWorld.MultiplyPoint3x4(tri.v2);
                 
-                if (IntersectTriangleWS(rayWS, v0_WS, v1_WS, v2_WS, out float distWorldSpace, out _))
-                {
-                    Vector3 pointWorldSpace = rayWS.origin + distWorldSpace * rayWS.dir;
-                    Vector3 normalWorldSpace = Vector3.Cross(v1_WS - v0_WS, v2_WS - v0_WS).normalized;
-                    
-                    if (distWorldSpace < bestTriDist) bestTriDist = distWorldSpace;
-                    
-                    if (distWorldSpace > 1e-4f && distWorldSpace < bestHit.t)
-                    {
-                        bestHit = new Hit { t = distWorldSpace, hit = true, positionWS = pointWorldSpace, normalWS = normalWorldSpace, materialIndex = tri.materialIndex };
-                    }
-                }
+                objects.Add(new TriangleInstance(tri.materialIndex, v0_WS, v1_WS, v2_WS));
             }
         }
-        
-        if (debug)
-        {
-            Debug.Log($"[RT] Closest by type (center pixel): sphere={bestSphereDist}, box={bestBoxDist}, tri={bestTriDist}");
-            if (bestHit.hit)
-                Debug.Log($"[RT] Hit: t={bestHit.t} pos={bestHit.positionWS} n={bestHit.normalWS} mat={bestHit.materialIndex}");
-            else
-                Debug.Log("[RT] No hit, returning background");
-        }
-        
-        if (!bestHit.hit) return backgroundColor;
-        
-        return Shade(scene, lights, bestHit, rayWS);
+
+        if (objects.Count == 0) return new BVHNode(new List<IHittable>()); // Empty node
+
+        return new BVHNode(objects);
     }
 
-    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, Hit hit, Ray rayWS)
+    Color TracePrimary(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, IHittable bvhRoot, Ray rayWS, Color backgroundColor, bool debug = false)
+    {
+        if (bvhRoot.Hit(rayWS, 0.001f, float.MaxValue, out HitRecord rec))
+        {
+            if (debug)
+            {
+                Debug.Log($"[RT] Hit: t={rec.t} pos={rec.positionWS} n={rec.normalWS} mat={rec.materialIndex}");
+            }
+            return Shade(scene, lights, rec, rayWS);
+        }
+
+        if (debug)
+        {
+            Debug.Log("[RT] No hit, returning background");
+        }
+        return backgroundColor;
+    }
+
+    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS)
     {
         Color baseColor = Color.white;
         float ambientCoeff = 0.1f, diffuseCoeff = 0.7f, specularCoeff = 0.2f;
@@ -255,7 +153,7 @@ public class RayTracer
         }
 
         Vector3 N = hit.normalWS.normalized;
-        Vector3 V = (-rayWS.dir).normalized;
+        Vector3 V = (-rayWS.direction).normalized;
         Color result = ambientCoeff * baseColor;
 
         foreach (var lp in lights)
@@ -314,103 +212,6 @@ public class RayTracer
             M = M * transform;
         }
         return M;
-    }
-
-    static Ray TransformRay(Matrix4x4 M, Ray r)
-    {
-        Vector3 o = M.MultiplyPoint3x4(r.origin);
-        Vector3 d = (M.MultiplyVector(r.dir)).normalized;
-        return new Ray { origin = o, dir = d };
-    }
-
-    static bool IntersectUnitSphere(Ray r, out float t)
-    {
-        // sphere radius 1 centered at origin
-        float a = Vector3.Dot(r.dir, r.dir);
-        float b = 2f * Vector3.Dot(r.origin, r.dir);
-        float c = Vector3.Dot(r.origin, r.origin) - 1f;
-        float disc = b * b - 4f * a * c;
-        if (disc < 0f) { t = 0f; return false; }
-        float s = Mathf.Sqrt(disc);
-        float t0 = (-b - s) / (2f * a);
-        float t1 = (-b + s) / (2f * a);
-        t = t0;
-        if (t < 1e-4f) t = t1;
-        return t >= 1e-4f;
-    }
-
-    static bool IntersectUnitBox(Ray r, out float t, out Vector3 n)
-    {
-        // bounds [-0.5, 0.5]
-        Vector3 min = new Vector3(-0.5f, -0.5f, -0.5f);
-        Vector3 max = new Vector3(0.5f, 0.5f, 0.5f);
-        t = 0f; n = Vector3.zero;
-        float tmin = -1e20f, tmax = 1e20f;
-        Vector3 nmin = Vector3.zero, nmax = Vector3.zero;
-        for (int axis = 0; axis < 3; axis++)
-        {
-            float o = axis == 0 ? r.origin.x : axis == 1 ? r.origin.y : r.origin.z;
-            float d = axis == 0 ? r.dir.x : axis == 1 ? r.dir.y : r.dir.z;
-            float invD = Mathf.Abs(d) > 1e-8f ? 1f / d : float.PositiveInfinity;
-            float t1 = ( (axis==0?min.x:axis==1?min.y:min.z) - o) * invD;
-            float t2 = ( (axis==0?max.x:axis==1?max.y:max.z) - o) * invD;
-            Vector3 n1 = Vector3.zero; Vector3 n2 = Vector3.zero;
-            if (axis == 0) { n1 = new Vector3(-1,0,0); n2 = new Vector3(1,0,0); }
-            else if (axis == 1) { n1 = new Vector3(0,-1,0); n2 = new Vector3(0,1,0); }
-            else { n1 = new Vector3(0,0,-1); n2 = new Vector3(0,0,1); }
-            if (t1 > t2) { (t1, t2) = (t2, t1); (n1, n2) = (n2, n1); }
-            if (t1 > tmin) { tmin = t1; nmin = n1; }
-            if (t2 < tmax) { tmax = t2; nmax = n2; }
-            if (tmin > tmax) return false;
-            if (tmax < 1e-4f) return false;
-        }
-        t = tmin >= 1e-4f ? tmin : tmax;
-        n = t == tmin ? nmin : nmax;
-        return t >= 1e-4f;
-    }
-
-    static bool IntersectTriangle(Ray r, Vector3 a, Vector3 b, Vector3 c, out float t, out Vector3 bary)
-    {
-        t = 0f; bary = Vector3.zero;
-        Vector3 e1 = b - a;
-        Vector3 e2 = c - a;
-        Vector3 p = Vector3.Cross(r.dir, e2);
-        float det = Vector3.Dot(e1, p);
-        if (Mathf.Abs(det) < 1e-8f) return false;
-        float invDet = 1f / det;
-        Vector3 s = r.origin - a;
-        float u = Vector3.Dot(s, p) * invDet;
-        if (u < 0f || u > 1f) return false;
-        Vector3 q = Vector3.Cross(s, e1);
-        float v = Vector3.Dot(r.dir, q) * invDet;
-        if (v < 0f || u + v > 1f) return false;
-        float tt = Vector3.Dot(e2, q) * invDet;
-        if (tt < 1e-4f) return false;
-        t = tt;
-        bary = new Vector3(1f - u - v, u, v);
-        return true;
-    }
-
-    static bool IntersectTriangleWS(Ray r, Vector3 v0_WS, Vector3 v1_WS, Vector3 v2_WS, out float t, out Vector3 bary)
-    {
-        t = 0f; bary = Vector3.zero;
-        Vector3 e1 = v1_WS - v0_WS;
-        Vector3 e2 = v2_WS - v0_WS;
-        Vector3 p = Vector3.Cross(r.dir, e2);
-        float det = Vector3.Dot(e1, p);
-        if (Mathf.Abs(det) < 1e-8f) return false;
-        float invDet = 1f / det;
-        Vector3 s = r.origin - v0_WS;
-        float u = Vector3.Dot(s, p) * invDet;
-        if (u < 0f || u > 1f) return false;
-        Vector3 q = Vector3.Cross(s, e1);
-        float v = Vector3.Dot(r.dir, q) * invDet;
-        if (v < 0f || u + v > 1f) return false;
-        float tt = Vector3.Dot(e2, q) * invDet;
-        if (tt < 1e-4f) return false;
-        t = tt;
-        bary = new Vector3(1f - u - v, u, v);
-        return true;
     }
 
     public static void SaveTexture(Texture2D tex, string path)

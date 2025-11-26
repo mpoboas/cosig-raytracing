@@ -54,19 +54,25 @@ This document summarizes the current project structure, scene models, parsing lo
       - Camera is at `(0,0,distance)`, looking toward `-Z`, up `(0,1,0)`.
       - Vertical FOV determines plane size: `halfHeight = distance * tan(vFOV/2)`, `width = height * aspect`.
       - For pixel (x,y), map to camera-space ray direction `(u, v, -distance)`, then normalized.
-    - Transform application:
-      - A global `sceneMat` is derived from the camera transformation (currently using the camera composite directly; see “Open Questions”).
-      - Each object/mesh uses `M = sceneMat * objectComposite`.
-      - Intersections are performed in:
-        - Object-space for sphere and box (transform ray by inverse; convert normal via inverse-transpose).
-        - World-space for triangles (transform vertices by `M` and intersect with the world-space ray).
+    - **Acceleration Structure (BVH)**:
+      - Before rendering, a **Bounding Volume Hierarchy (BVH)** is built from all scene objects.
+      - This replaces the $O(N)$ linear search with an $O(\log N)$ hierarchical traversal.
+      - The `BuildBVH` method converts `ObjectData` into a tree of `BVHNode`s containing `IHittable` objects (`SphereInstance`, `BoxInstance`, `TriangleInstance`).
     - Intersections:
-      - Sphere: unit sphere at origin.
-      - Box: axis-aligned cube with bounds `[-0.5, 0.5]`.
-      - Triangle: Möller–Trumbore (WS variant shown).
+      - All intersections are handled via the `IHittable` interface and the BVH tree.
+      - `SphereInstance`: Handles object-space intersection for unit spheres.
+      - `BoxInstance`: Handles object-space intersection for unit cubes.
+      - `TriangleInstance`: Handles world-space intersection for triangles.
     - Shading (simple): ambient + diffuse (Lambert) + specular (Blinn–Phong). No shadows yet.
     - Output: returns `Texture2D`. Helper saves PNG via `RayTracer.SaveTexture()`.
     - Targeted debug logs for camera matrix, center-pixel ray, sample object positions, and closest hit distances by type.
+
+- `Assets/Services/BVH/`
+  - Contains the core components for the Bounding Volume Hierarchy system.
+  - `AABB.cs`: Defines the Axis-Aligned Bounding Box struct with efficient ray-box intersection logic.
+  - `IHittable.cs`: Interface for all objects that can be hit by a ray (`Hit` method and `GetBoundingBox`).
+  - `BVHNode.cs`: Represents a node in the BVH tree. It recursively splits objects (currently random axis split) to build the hierarchy and traverses children during intersection.
+  - `HittableObjects.cs`: Wrappers for scene primitives (`SphereInstance`, `BoxInstance`, `TriangleInstance`) that implement `IHittable`.
 
 - `Assets/SceneBuilder.cs`
   - Entry point MonoBehaviour for running the pipeline.
@@ -74,7 +80,7 @@ This document summarizes the current project structure, scene models, parsing lo
     - Loads scene via `SceneService.LoadScene()`.
     - Logs a summary of parsed content.
     - Calls `RayTracer.Render(scene)` and saves to `Assets/Output/render.png`.
-    - If a `RawImage` UI exists, displays the rendered texture.
+    - If a `UIDocument` exists, displays the rendered texture on a VisualElement named `ray-traced-image`.
   - Note: Previously instantiated Unity primitives; now switched to purely ray-traced image output.
 
 ## Scene File Semantics (from spec and sample)
@@ -115,7 +121,7 @@ This document summarizes the current project structure, scene models, parsing lo
 - Add hard shadows: cast shadow rays toward each light and test for occlusion.
 - Add support for multiple lights with attenuation.
 - Implement reflection/refraction (use `specular`, `refraction`, `ior`).
-- Acceleration structures (BVH) for large triangle meshes.
+- **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
 - Tone mapping / gamma correction if needed.
 
 ## Quick Start (Runtime)
@@ -124,11 +130,33 @@ This document summarizes the current project structure, scene models, parsing lo
 2. Add `SceneBuilder` to a GameObject in a scene and press Play.
 3. Inspect Unity Console for [RT] logs.
 4. Find the rendered image at `Assets/Output/render.png`.
-5. Optional: Add a `Canvas` with a `RawImage` to see the texture in Play Mode directly.
+5. Optional: Add a `UIDocument` with a VisualElement named `ray-traced-image` to see the texture in Play Mode directly.
+
+## Acceleration Structure Implementation (BVH)
+
+To optimize rendering performance, especially for scenes with many triangles, a Bounding Volume Hierarchy (BVH) is implemented.
+
+1.  **Primitives Wrapper**:
+    - Raw data (`SphereDescription`, `BoxDescription`, `Triangle`) is wrapped into `SphereInstance`, `BoxInstance`, and `TriangleInstance`.
+    - These classes implement `IHittable` and handle their own AABB calculation and intersection logic.
+    - `SphereInstance` and `BoxInstance` store the inverse transformation matrix to perform intersection in object space (unit sphere/box), then transform the hit point and normal back to world space.
+
+2.  **Hierarchy Construction (`BVHNode`)**:
+    - The tree is built recursively top-down.
+    - At each node, the list of objects is split into two children (`left` and `right`).
+    - **Splitting Strategy**: Currently, a random axis (X, Y, or Z) is chosen. The objects are sorted by their bounding box minimum coordinate along that axis, and the list is split in half (median split).
+    - Leaf nodes contain 1 or 2 objects.
+    - Each node stores an `AABB` that encapsulates all its children.
+
+3.  **Traversal**:
+    - The `Hit` method checks intersection with the node's AABB first.
+    - If the box is hit, it recursively checks `left` and `right` children.
+    - It returns the closest hit (smallest `t`) among children.
 
 ## Design Decisions Summary
 
 - Models mirror the exact scene specification and are serializable.
 - Parser populates a single `ObjectData` root representing the entire scene.
 - Ray tracer operates in world space with explicit transforms; triangles are intersected in WS for safety under non-uniform transforms.
+- **BVH Integration**: The ray tracer now builds a BVH tree before rendering. This abstracts the intersection logic behind the `IHittable` interface, allowing the main loop to simply call `root.Hit()`. This significantly improves performance for scenes with many objects.
 - No Unity primitives are used in the final pipeline—only a generated image.

@@ -12,7 +12,7 @@ public class SceneBuilder : MonoBehaviour
     private ObjectData scene; // Parsed scene 
     void Start()
     {
-        string filePath = "Assets/Resources/Scenes/eval_scene.txt"; // Path to the scene description file 
+        string filePath = "Assets/Resources/Scenes/test_scene_2.txt"; // Path to the scene description file 
         scene = sceneService.LoadScene(filePath); // Parse scene
         LogSceneSummary(scene); // Debug: show parser output
         // Render via ray tracer (no Unity primitives)
@@ -22,7 +22,7 @@ public class SceneBuilder : MonoBehaviour
         RayTracer.SaveTexture(tex, outPath);
         Debug.Log($"Ray tracing complete. Saved to {outPath}");
         // Display on UI Toolkit VisualElement if present
-        var uiDocument = FindObjectOfType<UIDocument>();
+        var uiDocument = FindFirstObjectByType<UIDocument>();
         if (uiDocument != null)
         {
             // Get the container for the ray-traced image
@@ -42,7 +42,7 @@ public class SceneBuilder : MonoBehaviour
                 // Set image to scale to fit the container while maintaining aspect ratio
                 image.style.width = new StyleLength(Length.Percent(100));
                 image.style.height = new StyleLength(Length.Percent(100));
-                image.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+                image.scaleMode = ScaleMode.ScaleToFit;
                 
                 // Add the image to the container
                 container.Add(image);
