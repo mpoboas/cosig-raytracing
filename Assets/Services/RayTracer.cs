@@ -20,14 +20,20 @@ public class RayTracer
         public bool hit;
     }
 
+    /// <summary>
+    /// Renders the scene to a Texture2D using ray tracing.
+    /// </summary>
+    /// <param name="scene">The scene data containing objects, lights, and camera settings.</param>
+    /// <returns>A Texture2D containing the rendered image.</returns>
     public Texture2D Render(ObjectData scene)
     {
         int width = Mathf.Max(1, scene.Image != null ? scene.Image.horizontal : 256);
         int height = Mathf.Max(1, scene.Image != null ? scene.Image.vertical : 256);
-        Color bg = scene.Image != null ? scene.Image.background : Color.black;
+        Color backgroundColor = scene.Image != null ? scene.Image.background : Color.black;
 
-        Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        Texture2D outputTexture = new Texture2D(width, height, TextureFormat.RGBA32, false);
 
+        // --- Camera Setup ---
         Matrix4x4 sceneMat = Matrix4x4.identity;
         if (scene.Camera != null && scene.Camera.transformationIndex >= 0 && scene.Camera.transformationIndex < scene.Transformations.Count)
         {
@@ -37,6 +43,7 @@ public class RayTracer
         Debug.Log($"[RT] Camera tIndex={scene.Camera?.transformationIndex} dist={scene.Camera?.distance} vfov={scene.Camera?.verticalFovDeg}");
         Debug.Log($"[RT] Scene (camera) matrix (direct):\n{sceneMat}");
 
+        // --- Light Setup ---
         List<(Vector3 posWS, Color rgb)> lightPoints = new List<(Vector3, Color)>();
         foreach (var light in scene.Lights)
         {
@@ -44,65 +51,69 @@ public class RayTracer
             Vector3 pos = lm.MultiplyPoint3x4(Vector3.zero);
             lightPoints.Add((pos, light.rgb));
         }
+
         // Extra diagnostics: sample object placements
         if (scene.Spheres.Count > 0)
         {
             var s = scene.Spheres[0];
-            var om = sceneMat * BuildByIndex(scene, s.transformationIndex);
-            Vector3 c = om.MultiplyPoint3x4(Vector3.zero);
+            var objectToWorldMatrix = sceneMat * BuildByIndex(scene, s.transformationIndex);
+            Vector3 c = objectToWorldMatrix.MultiplyPoint3x4(Vector3.zero);
             Debug.Log($"[RT] Sphere[0] center WS ~ {c}");
         }
         if (scene.Boxes.Count > 0)
         {
             var b = scene.Boxes[0];
-            var om = sceneMat * BuildByIndex(scene, b.transformationIndex);
-            Vector3 c = om.MultiplyPoint3x4(Vector3.zero);
+            var objectToWorldMatrix = sceneMat * BuildByIndex(scene, b.transformationIndex);
+            Vector3 c = objectToWorldMatrix.MultiplyPoint3x4(Vector3.zero);
             Debug.Log($"[RT] Box[0] center WS ~ {c}");
         }
 
+        // --- Projection Plane Calculations ---
         // Compute camera distance and image plane size early so diagnostics can use them
-        float d = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.distance) : 1f;
-        float vfov = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.verticalFovDeg) : 60f;
+        float cameraDistance = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.distance) : 1f;
+        float verticalFov = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.verticalFovDeg) : 60f;
         float aspect = (float)width / (float)height;
-        float halfH = d * Mathf.Tan(0.5f * vfov * Mathf.Deg2Rad);
-        float planeH = 2f * halfH;
-        float planeW = planeH * aspect;
+        float halfHeight = cameraDistance * Mathf.Tan(0.5f * verticalFov * Mathf.Deg2Rad);
+        float planeHeight = 2f * halfHeight;
+        float planeWidth = planeHeight * aspect;
 
         if (scene.TriangleMeshes.Count > 0 && scene.TriangleMeshes[0].Triangles.Count > 0)
         {
             var m = scene.TriangleMeshes[0];
-            var om = sceneMat * BuildByIndex(scene, m.transformationIndex);
+            var objectToWorldMatrix = sceneMat * BuildByIndex(scene, m.transformationIndex);
             var tri = m.Triangles[0];
-            Vector3 aWS = om.MultiplyPoint3x4(tri.v0);
-            Vector3 bWS = om.MultiplyPoint3x4(tri.v1);
-            Vector3 cWS = om.MultiplyPoint3x4(tri.v2);
-            Debug.Log($"[RT] Tri[0] v0.z={aWS.z:F2} v1.z={bWS.z:F2} v2.z={cWS.z:F2}");
-            // Project aWS to z=0 along line from camera (0,0,d)
-            if (Mathf.Abs(aWS.z - 0f) > 1e-6f)
+            Vector3 v0_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v0);
+            Vector3 v1_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v1);
+            Vector3 v2_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v2);
+            Debug.Log($"[RT] Tri[0] v0.z={v0_WS.z:F2} v1.z={v1_WS.z:F2} v2.z={v2_WS.z:F2}");
+            // Project v0_WS to z=0 along line from camera (0,0,cameraDistance)
+            if (Mathf.Abs(v0_WS.z - 0f) > 1e-6f)
             {
-                float tProj = (0f -  d) / (aWS.z - d); // param along line from cam to aWS to reach z=0
-                Vector3 aOnPlane = new Vector3(0,0,d) + tProj * (aWS - new Vector3(0,0,d));
-                Debug.Log($"[RT] Tri[0].v0 projected on z=0: x'={aOnPlane.x:F2}, y'={aOnPlane.y:F2}; plane halfW={planeW/2f:F2}, halfH={planeH/2f:F2}");
+                float tProj = (0f - cameraDistance) / (v0_WS.z - cameraDistance); // param along line from cam to v0_WS to reach z=0
+                Vector3 aOnPlane = new Vector3(0, 0, cameraDistance) + tProj * (v0_WS - new Vector3(0, 0, cameraDistance));
+                Debug.Log($"[RT] Tri[0].v0 projected on z=0: x'={aOnPlane.x:F2}, y'={aOnPlane.y:F2}; plane halfW={planeWidth / 2f:F2}, halfH={planeHeight / 2f:F2}");
             }
             // World-space intersection test for center ray
-            Ray centerRay = new Ray { origin = new Vector3(0,0,d), dir = new Vector3(0,0,-1) };
-            if (IntersectTriangleWS(centerRay, aWS, bWS, cWS, out float tWS, out _))
+            Ray centerRay = new Ray { origin = new Vector3(0, 0, cameraDistance), dir = new Vector3(0, 0, -1) };
+            if (IntersectTriangleWS(centerRay, v0_WS, v1_WS, v2_WS, out float distWorldSpace, out _))
             {
-                Debug.Log($"[RT] Center ray hits Tri[0] in WS at t={tWS:F3}");
+                Debug.Log($"[RT] Center ray hits Tri[0] in WS at t={distWorldSpace:F3}");
             }
         }
 
+        // --- Main Ray Tracing Loop ---
         int cy = height / 2; int cx = width / 2; // center pixel for debugging
         for (int y = 0; y < height; y++)
         {
             for (int x = 0; x < width; x++)
             {
-                float u = ((x + 0.5f) / width - 0.5f) * planeW;
-                float v = ((y + 0.5f) / height - 0.5f) * planeH;
+                // Calculate ray direction through the pixel
+                float u = ((x + 0.5f) / width - 0.5f) * planeWidth;
+                float v = ((y + 0.5f) / height - 0.5f) * planeHeight;
                 Ray ray = new Ray
                 {
-                    origin = new Vector3(0f, 0f, d),
-                    dir = new Vector3(u, v, -d).normalized
+                    origin = new Vector3(0f, 0f, cameraDistance),
+                    dir = new Vector3(u, v, -cameraDistance).normalized
                 };
 
                 bool dbg = (x == cx && y == cy);
@@ -110,130 +121,154 @@ public class RayTracer
                 {
                     Debug.Log($"[RT] Center pixel ray origin={ray.origin} dir={ray.dir}");
                 }
-                Color c = TracePrimary(scene, sceneMat, lightPoints, ray, bg, dbg);
-                tex.SetPixel(x, y, c);
+                
+                // Trace the ray and get the color
+                Color c = TracePrimary(scene, sceneMat, lightPoints, ray, backgroundColor, dbg);
+                outputTexture.SetPixel(x, y, c);
             }
         }
 
-        tex.Apply();
-        return tex;
+        outputTexture.Apply();
+        return outputTexture;
     }
 
-    Color TracePrimary(ObjectData scene, Matrix4x4 sceneMat, List<(Vector3 posWS, Color rgb)> lights, Ray rayWS, Color bg, bool debug = false)
+    Color TracePrimary(ObjectData scene, Matrix4x4 sceneMat, List<(Vector3 posWS, Color rgb)> lights, Ray rayWS, Color backgroundColor, bool debug = false)
     {
-        Hit best = new Hit { t = float.MaxValue, hit = false };
-        float bestSphere = float.PositiveInfinity;
-        float bestBox = float.PositiveInfinity;
-        float bestTri = float.PositiveInfinity;
+        Hit bestHit = new Hit { t = float.MaxValue, hit = false };
+        float bestSphereDist = float.PositiveInfinity;
+        float bestBoxDist = float.PositiveInfinity;
+        float bestTriDist = float.PositiveInfinity;
 
-        // Spheres
+        // --- Sphere Intersections ---
         for (int i = 0; i < scene.Spheres.Count; i++)
         {
             var s = scene.Spheres[i];
-            Matrix4x4 om = sceneMat * BuildByIndex(scene, s.transformationIndex);
-            Matrix4x4 inv = om.inverse;
-            Ray rOS = TransformRay(inv, rayWS);
-            if (IntersectUnitSphere(rOS, out float tOS))
+            Matrix4x4 objectToWorldMatrix = sceneMat * BuildByIndex(scene, s.transformationIndex);
+            Matrix4x4 worldToObjectMatrix = objectToWorldMatrix.inverse;
+            
+            // Transform ray to object space
+            Ray rayObjectSpace = TransformRay(worldToObjectMatrix, rayWS);
+            
+            if (IntersectUnitSphere(rayObjectSpace, out float distObjectSpace))
             {
-                Vector3 pOS = rOS.origin + tOS * rOS.dir;
-                Vector3 nOS = pOS.normalized;
-                Vector3 pWS = om.MultiplyPoint3x4(pOS);
-                Vector3 nWS = (inv.transpose.MultiplyVector(nOS)).normalized;
-                float tWS = (pWS - rayWS.origin).magnitude;
-                if (tWS < bestSphere) bestSphere = tWS;
-                if (tWS > 1e-4f && tWS < best.t)
+                Vector3 pointObjectSpace = rayObjectSpace.origin + distObjectSpace * rayObjectSpace.dir;
+                Vector3 normalObjectSpace = pointObjectSpace.normalized;
+                
+                // Transform hit point and normal back to world space
+                Vector3 pointWorldSpace = objectToWorldMatrix.MultiplyPoint3x4(pointObjectSpace);
+                Vector3 normalWorldSpace = (worldToObjectMatrix.transpose.MultiplyVector(normalObjectSpace)).normalized;
+                
+                float distWorldSpace = (pointWorldSpace - rayWS.origin).magnitude;
+                if (distWorldSpace < bestSphereDist) bestSphereDist = distWorldSpace;
+                
+                if (distWorldSpace > 1e-4f && distWorldSpace < bestHit.t)
                 {
-                    best = new Hit { t = tWS, hit = true, positionWS = pWS, normalWS = nWS, materialIndex = s.materialIndex };
+                    bestHit = new Hit { t = distWorldSpace, hit = true, positionWS = pointWorldSpace, normalWS = normalWorldSpace, materialIndex = s.materialIndex };
                 }
             }
         }
 
-        // Boxes (unit cube centered at origin, bounds [-0.5, 0.5])
+        // --- Box Intersections ---
+        // Boxes are unit cubes centered at origin, bounds [-0.5, 0.5]
         for (int i = 0; i < scene.Boxes.Count; i++)
         {
             var b = scene.Boxes[i];
-            Matrix4x4 om = sceneMat * BuildByIndex(scene, b.transformationIndex);
-            Matrix4x4 inv = om.inverse;
-            Ray rOS = TransformRay(inv, rayWS);
-            if (IntersectUnitBox(rOS, out float tOS, out Vector3 nOS))
+            Matrix4x4 objectToWorldMatrix = sceneMat * BuildByIndex(scene, b.transformationIndex);
+            Matrix4x4 worldToObjectMatrix = objectToWorldMatrix.inverse;
+            
+            Ray rayObjectSpace = TransformRay(worldToObjectMatrix, rayWS);
+            
+            if (IntersectUnitBox(rayObjectSpace, out float distObjectSpace, out Vector3 normalObjectSpace))
             {
-                Vector3 pOS = rOS.origin + tOS * rOS.dir;
-                Vector3 pWS = om.MultiplyPoint3x4(pOS);
-                Vector3 nWS = (inv.transpose.MultiplyVector(nOS)).normalized;
-                float tWS = (pWS - rayWS.origin).magnitude;
-                if (tWS < bestBox) bestBox = tWS;
-                if (tWS > 1e-4f && tWS < best.t)
+                Vector3 pointObjectSpace = rayObjectSpace.origin + distObjectSpace * rayObjectSpace.dir;
+                
+                Vector3 pointWorldSpace = objectToWorldMatrix.MultiplyPoint3x4(pointObjectSpace);
+                Vector3 normalWorldSpace = (worldToObjectMatrix.transpose.MultiplyVector(normalObjectSpace)).normalized;
+                
+                float distWorldSpace = (pointWorldSpace - rayWS.origin).magnitude;
+                if (distWorldSpace < bestBoxDist) bestBoxDist = distWorldSpace;
+                
+                if (distWorldSpace > 1e-4f && distWorldSpace < bestHit.t)
                 {
-                    best = new Hit { t = tWS, hit = true, positionWS = pWS, normalWS = nWS, materialIndex = b.materialIndex };
+                    bestHit = new Hit { t = distWorldSpace, hit = true, positionWS = pointWorldSpace, normalWS = normalWorldSpace, materialIndex = b.materialIndex };
                 }
             }
         }
 
-        // Triangles (intersect in world space to avoid numeric issues with non-uniform transforms)
+        // --- Triangle Intersections ---
+        // Intersect in world space to avoid numeric issues with non-uniform transforms
         for (int mi = 0; mi < scene.TriangleMeshes.Count; mi++)
         {
             var m = scene.TriangleMeshes[mi];
-            Matrix4x4 om = sceneMat * BuildByIndex(scene, m.transformationIndex);
-            Matrix4x4 inv = om.inverse;
+            Matrix4x4 objectToWorldMatrix = sceneMat * BuildByIndex(scene, m.transformationIndex);
+            // Matrix4x4 worldToObjectMatrix = objectToWorldMatrix.inverse; // Not used for world space intersection
+            
             for (int ti = 0; ti < m.Triangles.Count; ti++)
             {
                 var tri = m.Triangles[ti];
-                Vector3 aWS = om.MultiplyPoint3x4(tri.v0);
-                Vector3 bWS = om.MultiplyPoint3x4(tri.v1);
-                Vector3 cWS = om.MultiplyPoint3x4(tri.v2);
-                if (IntersectTriangleWS(rayWS, aWS, bWS, cWS, out float tWS, out _))
+                Vector3 v0_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v0);
+                Vector3 v1_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v1);
+                Vector3 v2_WS = objectToWorldMatrix.MultiplyPoint3x4(tri.v2);
+                
+                if (IntersectTriangleWS(rayWS, v0_WS, v1_WS, v2_WS, out float distWorldSpace, out _))
                 {
-                    Vector3 pWS = rayWS.origin + tWS * rayWS.dir;
-                    Vector3 nWS = Vector3.Cross(bWS - aWS, cWS - aWS).normalized;
-                    if (tWS < bestTri) bestTri = tWS;
-                    if (tWS > 1e-4f && tWS < best.t)
+                    Vector3 pointWorldSpace = rayWS.origin + distWorldSpace * rayWS.dir;
+                    Vector3 normalWorldSpace = Vector3.Cross(v1_WS - v0_WS, v2_WS - v0_WS).normalized;
+                    
+                    if (distWorldSpace < bestTriDist) bestTriDist = distWorldSpace;
+                    
+                    if (distWorldSpace > 1e-4f && distWorldSpace < bestHit.t)
                     {
-                        best = new Hit { t = tWS, hit = true, positionWS = pWS, normalWS = nWS, materialIndex = tri.materialIndex };
+                        bestHit = new Hit { t = distWorldSpace, hit = true, positionWS = pointWorldSpace, normalWS = normalWorldSpace, materialIndex = tri.materialIndex };
                     }
                 }
             }
         }
+        
         if (debug)
         {
-            Debug.Log($"[RT] Closest by type (center pixel): sphere={bestSphere}, box={bestBox}, tri={bestTri}");
-            if (best.hit)
-                Debug.Log($"[RT] Hit: t={best.t} pos={best.positionWS} n={best.normalWS} mat={best.materialIndex}");
+            Debug.Log($"[RT] Closest by type (center pixel): sphere={bestSphereDist}, box={bestBoxDist}, tri={bestTriDist}");
+            if (bestHit.hit)
+                Debug.Log($"[RT] Hit: t={bestHit.t} pos={bestHit.positionWS} n={bestHit.normalWS} mat={bestHit.materialIndex}");
             else
                 Debug.Log("[RT] No hit, returning background");
         }
-        if (!best.hit) return bg;
-        return Shade(scene, lights, best, rayWS);
+        
+        if (!bestHit.hit) return backgroundColor;
+        
+        return Shade(scene, lights, bestHit, rayWS);
     }
 
     Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, Hit hit, Ray rayWS)
     {
-        Color baseCol = Color.white;
-        float ka = 0.1f, kd = 0.7f, ks = 0.2f;
+        Color baseColor = Color.white;
+        float ambientCoeff = 0.1f, diffuseCoeff = 0.7f, specularCoeff = 0.2f;
         float shininess = 32f;
+        
         if (hit.materialIndex >= 0 && hit.materialIndex < scene.Materials.Count)
         {
             var m = scene.Materials[hit.materialIndex];
-            baseCol = m.color;
-            ka = m.ambient;
-            kd = m.diffuse;
-            ks = m.specular;
+            baseColor = m.color;
+            ambientCoeff = m.ambient;
+            diffuseCoeff = m.diffuse;
+            specularCoeff = m.specular;
         }
 
         Vector3 N = hit.normalWS.normalized;
         Vector3 V = (-rayWS.dir).normalized;
-        Color result = ka * baseCol;
+        Color result = ambientCoeff * baseColor;
 
         foreach (var lp in lights)
         {
             Vector3 L = (lp.posWS - hit.positionWS).normalized;
             float NdotL = Mathf.Max(0f, Vector3.Dot(N, L));
-            Color diffuse = kd * NdotL * Mul(baseCol, lp.rgb);
+            Color diffuse = diffuseCoeff * NdotL * Mul(baseColor, lp.rgb);
 
             Vector3 H = (L + V).normalized;
             float NdotH = Mathf.Max(0f, Vector3.Dot(N, H));
-            Color spec = ks * Mathf.Pow(NdotH, shininess) * lp.rgb;
+            Color specular = specularCoeff * Mathf.Pow(NdotH, shininess) * lp.rgb;
 
-            result += diffuse + spec;
+            result += diffuse + specular;
         }
 
         result.r = Mathf.Clamp01(result.r);
@@ -275,7 +310,7 @@ public class RayTracer
                     transform = Matrix4x4.Rotate(Quaternion.AngleAxis(e.AngleDeg, Vector3.forward));
                     break;
             }
-            // Aplica a transformação atual à direita da matriz acumulada (M = M * transform)
+            // Apply current transform to the right of the accumulated matrix (M = M * transform)
             M = M * transform;
         }
         return M;
@@ -356,16 +391,16 @@ public class RayTracer
         return true;
     }
 
-    static bool IntersectTriangleWS(Ray r, Vector3 aWS, Vector3 bWS, Vector3 cWS, out float t, out Vector3 bary)
+    static bool IntersectTriangleWS(Ray r, Vector3 v0_WS, Vector3 v1_WS, Vector3 v2_WS, out float t, out Vector3 bary)
     {
         t = 0f; bary = Vector3.zero;
-        Vector3 e1 = bWS - aWS;
-        Vector3 e2 = cWS - aWS;
+        Vector3 e1 = v1_WS - v0_WS;
+        Vector3 e2 = v2_WS - v0_WS;
         Vector3 p = Vector3.Cross(r.dir, e2);
         float det = Vector3.Dot(e1, p);
         if (Mathf.Abs(det) < 1e-8f) return false;
         float invDet = 1f / det;
-        Vector3 s = r.origin - aWS;
+        Vector3 s = r.origin - v0_WS;
         float u = Vector3.Dot(s, p) * invDet;
         if (u < 0f || u > 1f) return false;
         Vector3 q = Vector3.Cross(s, e1);
