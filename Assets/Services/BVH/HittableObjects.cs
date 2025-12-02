@@ -88,9 +88,13 @@ public class SphereInstance : IHittable
         float s = Mathf.Sqrt(disc);
         float t0 = (-b - s) / (2f * a);
         float t1 = (-b + s) / (2f * a);
-        t = t0;
-        if (t < 1e-4f) t = t1;
-        return t >= 1e-4f;
+        
+        const float kEpsilon = 1e-6f;
+        
+        if (t0 > kEpsilon) t = t0;
+        else t = t1;
+        
+        return t > kEpsilon;
     }
 }
 
@@ -161,6 +165,9 @@ public class BoxInstance : IHittable
         t = 0f; n = Vector3.zero;
         float tmin = -1e20f, tmax = 1e20f;
         Vector3 nmin = Vector3.zero, nmax = Vector3.zero;
+        
+        const float kEpsilon = 1e-6f;
+
         for (int axis = 0; axis < 3; axis++)
         {
             float o = axis == 0 ? r.origin.x : axis == 1 ? r.origin.y : r.origin.z;
@@ -176,11 +183,11 @@ public class BoxInstance : IHittable
             if (t1 > tmin) { tmin = t1; nmin = n1; }
             if (t2 < tmax) { tmax = t2; nmax = n2; }
             if (tmin > tmax) return false;
-            if (tmax < 1e-4f) return false;
+            if (tmax < kEpsilon) return false;
         }
-        t = tmin >= 1e-4f ? tmin : tmax;
+        t = tmin >= kEpsilon ? tmin : tmax;
         n = t == tmin ? nmin : nmax;
-        return t >= 1e-4f;
+        return t >= kEpsilon;
     }
 }
 
@@ -212,12 +219,16 @@ public class TriangleInstance : IHittable
     public bool Hit(Ray ray, float tMin, float tMax, out HitRecord rec)
     {
         rec = new HitRecord();
-        if (IntersectTriangleWS(ray, v0, v1, v2, out float t, out _))
+        if (IntersectTriangleWS(ray, v0, v1, v2, out float t, out Vector3 bary))
         {
             if (t < tMax && t > tMin)
             {
                 rec.t = t;
-                rec.positionWS = ray.origin + t * ray.direction;
+                // Use interpolated position as requested
+                // P' = a + beta(b-a) + gamma(c-a)
+                // bary contains (alpha, beta, gamma) where alpha = 1-beta-gamma
+                // So P' = alpha*v0 + beta*v1 + gamma*v2
+                rec.positionWS = bary.x * v0 + bary.y * v1 + bary.z * v2;
                 rec.normalWS = normal;
                 rec.materialIndex = materialIndex;
                 rec.hit = true;
@@ -232,22 +243,33 @@ public class TriangleInstance : IHittable
     private bool IntersectTriangleWS(Ray r, Vector3 aWS, Vector3 bWS, Vector3 cWS, out float t, out Vector3 bary)
     {
         t = 0f; bary = Vector3.zero;
+        const float kEpsilon = 1e-6f;
+
         Vector3 e1 = bWS - aWS;
         Vector3 e2 = cWS - aWS;
         Vector3 p = Vector3.Cross(r.direction, e2);
         float det = Vector3.Dot(e1, p);
-        if (Mathf.Abs(det) < 1e-8f) return false;
+        
+        // Culling or not? Assuming no culling for now or double sided?
+        // If det is close to 0, ray parallel to triangle
+        if (Mathf.Abs(det) < kEpsilon) return false;
+        
         float invDet = 1f / det;
         Vector3 s = r.origin - aWS;
-        float u = Vector3.Dot(s, p) * invDet;
-        if (u < 0f || u > 1f) return false;
+        float beta = Vector3.Dot(s, p) * invDet;
+        
+        if (beta < -kEpsilon || beta > 1.0f + kEpsilon) return false;
+        
         Vector3 q = Vector3.Cross(s, e1);
-        float v = Vector3.Dot(r.direction, q) * invDet;
-        if (v < 0f || u + v > 1f) return false;
+        float gamma = Vector3.Dot(r.direction, q) * invDet;
+        
+        if (gamma < -kEpsilon || beta + gamma > 1.0f + kEpsilon) return false;
+        
         float tt = Vector3.Dot(e2, q) * invDet;
-        if (tt < 1e-4f) return false;
+        if (tt < kEpsilon) return false;
+        
         t = tt;
-        bary = new Vector3(1f - u - v, u, v);
+        bary = new Vector3(1f - beta - gamma, beta, gamma); // alpha, beta, gamma
         return true;
     }
 }

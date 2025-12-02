@@ -61,10 +61,16 @@ public class RayTracer
                 Vector3 rayDir = new Vector3(u, v, -cameraDistance).normalized;
                 Ray ray = new Ray(new Vector3(0f, 0f, cameraDistance), rayDir);
 
-                bool dbg = (x == cx && y == cy);
+                // Debug specific pixels from the support document
+                bool dbg = (y == 0 && x == 100) ||
+                           (y == 50 && x == 50) ||
+                           (y == 50 && x == 80) ||
+                           (y == 80 && x == 100) ||
+                           (y == 110 && x == 150);
+
                 if (dbg)
                 {
-                    Debug.Log($"[RT] Center pixel ray origin={ray.origin} dir={ray.direction}");
+                    Debug.Log($"[RT] Debugging Pixel (x={x}, y={y}) Ray origin={ray.origin} dir={ray.direction}");
                 }
                 
                 // Trace the ray and get the color
@@ -121,11 +127,11 @@ public class RayTracer
 
     Color TracePrimary(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, IHittable bvhRoot, Ray rayWS, Color backgroundColor, bool debug = false)
     {
-        if (bvhRoot.Hit(rayWS, 0.001f, float.MaxValue, out HitRecord rec))
+        if (bvhRoot.Hit(rayWS, 1e-6f, float.MaxValue, out HitRecord rec))
         {
             if (debug)
             {
-                Debug.Log($"[RT] Hit: t={rec.t} pos={rec.positionWS} n={rec.normalWS} mat={rec.materialIndex}");
+                Debug.Log($"[RT] Hit: t={rec.t} pos=({rec.positionWS.x:F10}, {rec.positionWS.y:F10}, {rec.positionWS.z:F10}) n={rec.normalWS} mat={rec.materialIndex}");
             }
             return Shade(scene, lights, rec, rayWS);
         }

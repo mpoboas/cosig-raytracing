@@ -12,7 +12,7 @@ public class SceneBuilder : MonoBehaviour
     private ObjectData scene; // Parsed scene 
     void Start()
     {
-        string filePath = "Assets/Resources/Scenes/test_scene_2.txt"; // Path to the scene description file 
+        string filePath = "Assets/Resources/Scenes/test_scene_1.txt"; // Path to the scene description file 
         scene = sceneService.LoadScene(filePath); // Parse scene
         LogSceneSummary(scene); // Debug: show parser output
         // Render via ray tracer (no Unity primitives)
