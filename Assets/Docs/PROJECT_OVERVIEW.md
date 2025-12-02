@@ -60,9 +60,9 @@ This document summarizes the current project structure, scene models, parsing lo
       - The `BuildBVH` method converts `ObjectData` into a tree of `BVHNode`s containing `IHittable` objects (`SphereInstance`, `BoxInstance`, `TriangleInstance`).
     - Intersections:
       - All intersections are handled via the `IHittable` interface and the BVH tree.
-      - `SphereInstance`: Handles object-space intersection for unit spheres.
-      - `BoxInstance`: Handles object-space intersection for unit cubes.
-      - `TriangleInstance`: Handles world-space intersection for triangles.
+      - `SphereInstance`: Handles object-space intersection for unit spheres using quadratic solution with epsilon checks.
+      - `BoxInstance`: Handles object-space intersection for unit cubes using the Slabs algorithm with epsilon checks.
+      - `TriangleInstance`: Handles world-space intersection for triangles using barycentric coordinates with watertightness checks (epsilon).
     - Shading (simple): ambient + diffuse (Lambert) + specular (Blinn–Phong). No shadows yet.
     - Output: returns `Texture2D`. Helper saves PNG via `RayTracer.SaveTexture()`.
     - Targeted debug logs for camera matrix, center-pixel ray, sample object positions, and closest hit distances by type.
@@ -121,7 +121,9 @@ This document summarizes the current project structure, scene models, parsing lo
 - Add hard shadows: cast shadow rays toward each light and test for occlusion.
 - Add support for multiple lights with attenuation.
 - Implement reflection/refraction (use `specular`, `refraction`, `ior`).
-- **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
+  - **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
+  - **[COMPLETED]** Rigorous intersection logic (Barycentric, Quadratic, Slabs) with epsilon for precision.
+  - **[COMPLETED]** Geometric transformations (World/Object space conversions) for rays and normals.
 - Tone mapping / gamma correction if needed.
 
 ## Quick Start (Runtime)
@@ -140,6 +142,14 @@ To optimize rendering performance, especially for scenes with many triangles, a 
     - Raw data (`SphereDescription`, `BoxDescription`, `Triangle`) is wrapped into `SphereInstance`, `BoxInstance`, and `TriangleInstance`.
     - These classes implement `IHittable` and handle their own AABB calculation and intersection logic.
     - `SphereInstance` and `BoxInstance` store the inverse transformation matrix to perform intersection in object space (unit sphere/box), then transform the hit point and normal back to world space.
+    - **Intersection Logic**:
+        - **Triangles**: Uses barycentric coordinates ($\alpha, \beta, \gamma$) with $\epsilon = 1e-6$ to ensure watertightness ($\beta > -\epsilon, \gamma > -\epsilon, \beta+\gamma < 1+\epsilon$). Interpolates vertex positions for $P'$.
+        - **Spheres**: Solves quadratic equation, selecting the closest positive root $> \epsilon$.
+        - **Boxes**: Uses Slabs algorithm (axis-aligned planes) with $\epsilon$ checks.
+    - **Transformations**:
+        - Ray transformed to object space via $T^{-1}$.
+        - $t$ distance calculated in world space to preserve depth ordering.
+        - Normals transformed to world space via $(T^{-1})^T$.
 
 2.  **Hierarchy Construction (`BVHNode`)**:
     - The tree is built recursively top-down.

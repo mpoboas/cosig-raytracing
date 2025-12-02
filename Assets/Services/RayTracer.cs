@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 public class RayTracer
@@ -9,11 +11,24 @@ public class RayTracer
 
     public Texture2D Render(ObjectData scene)
     {
+        // Synchronous wrapper for backward compatibility
+        var task = RenderAsync(scene, null, CancellationToken.None);
+        task.Wait();
+        var (colors, width, height) = task.Result;
+        
+        Texture2D outputTexture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        outputTexture.SetPixels(colors);
+        outputTexture.Apply();
+        return outputTexture;
+    }
+
+    public async Task<(Color[] pixels, int width, int height)> RenderAsync(ObjectData scene, IProgress<float> progress, CancellationToken token)
+    {
         int width = Mathf.Max(1, scene.Image != null ? scene.Image.horizontal : 256);
         int height = Mathf.Max(1, scene.Image != null ? scene.Image.vertical : 256);
         Color backgroundColor = scene.Image != null ? scene.Image.background : Color.black;
 
-        Texture2D outputTexture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        Color[] pixels = new Color[width * height];
 
         // --- Camera Setup ---
         Matrix4x4 sceneMat = Matrix4x4.identity;
@@ -49,38 +64,50 @@ public class RayTracer
 
         // --- Main Ray Tracing Loop ---
         int cy = height / 2; int cx = width / 2; // center pixel for debugging
-        for (int y = 0; y < height; y++)
+        
+        // Run on a background thread
+        await Task.Run(() =>
         {
-            for (int x = 0; x < width; x++)
+            for (int y = 0; y < height; y++)
             {
-                // Calculate ray direction through the pixel
-                float u = ((x + 0.5f) / width - 0.5f) * planeWidth;
-                float v = ((y + 0.5f) / height - 0.5f) * planeHeight;
-                
-                // UnityEngine.Ray takes origin and direction
-                Vector3 rayDir = new Vector3(u, v, -cameraDistance).normalized;
-                Ray ray = new Ray(new Vector3(0f, 0f, cameraDistance), rayDir);
+                if (token.IsCancellationRequested) break;
 
-                // Debug specific pixels from the support document
-                bool dbg = (y == 0 && x == 100) ||
-                           (y == 50 && x == 50) ||
-                           (y == 50 && x == 80) ||
-                           (y == 80 && x == 100) ||
-                           (y == 110 && x == 150);
-
-                if (dbg)
+                for (int x = 0; x < width; x++)
                 {
-                    Debug.Log($"[RT] Debugging Pixel (x={x}, y={y}) Ray origin={ray.origin} dir={ray.direction}");
+                    // Calculate ray direction through the pixel
+                    float u = ((x + 0.5f) / width - 0.5f) * planeWidth;
+                    float v = ((y + 0.5f) / height - 0.5f) * planeHeight;
+                    
+                    // UnityEngine.Ray takes origin and direction
+                    Vector3 rayDir = new Vector3(u, v, -cameraDistance).normalized;
+                    Ray ray = new Ray(new Vector3(0f, 0f, cameraDistance), rayDir);
+
+                    // Debug specific pixels from the support document - Apoio ao debugging - pontos de interseção
+                    bool dbg = (y == 0 && x == 100) ||
+                               (y == 50 && x == 50) ||
+                               (y == 50 && x == 80) ||
+                               (y == 80 && x == 100) ||
+                               (y == 110 && x == 150);
+
+                    if (dbg)
+                    {
+                        // Note: Debug.Log is thread-safe in recent Unity versions, but be careful
+                        Debug.Log($"[RT] Debugging Pixel (x={x}, y={y}) Ray origin={ray.origin} dir={ray.direction}");
+                    }
+                    
+                    // Trace the ray and get the color
+                    Color c = TracePrimary(scene, lightPoints, bvhRoot, ray, backgroundColor, dbg);
+                    
+                    // Store in array (SetPixel is not thread safe)
+                    pixels[y * width + x] = c;
                 }
                 
-                // Trace the ray and get the color
-                Color c = TracePrimary(scene, lightPoints, bvhRoot, ray, backgroundColor, dbg);
-                outputTexture.SetPixel(x, y, c);
+                // Report progress
+                progress?.Report((float)(y + 1) / height);
             }
-        }
+        }, token);
 
-        outputTexture.Apply();
-        return outputTexture;
+        return (pixels, width, height);
     }
 
     IHittable BuildBVH(ObjectData scene, Matrix4x4 sceneMat)

@@ -124,3 +124,5 @@ InitTestScene*.unity*
 Assets/.DS_Store
 
 Assets/Output/render.png
+
+Assets/Output/
