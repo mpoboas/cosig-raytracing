@@ -1,6 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/GUIs/styles.uss?fileID=7433441132597879392&amp;guid=f785f6fb7da055148970aa21023acdc3&amp;type=3#styles" />
-    <ui:VisualElement name="Mega_Pai" style="flex-grow: 1; flex-direction: column;">
+    <ui:VisualElement name="Mega_Pai" style="flex-grow: 1; flex-direction: column; background-color: rgb(255, 255, 255);">
         <ui:VisualElement name="tab_local_global" style="flex-grow: 1; margin-top: 5px; margin-right: 5px; margin-bottom: 5px; margin-left: 5px; padding-top: 25px; padding-right: 15px; padding-bottom: 5px; padding-left: 15px; align-items: stretch; flex-direction: column;">
             <ui:TabView reorderable="false" focusable="true" style="flex-grow: 1; flex-direction: column;">
                 <ui:Tab label="Global&#10;" name="Global" closeable="true" enabled="true" style="min-height: 450px; flex-grow: 1; background-color: rgb(255, 255, 255); flex-direction: row; justify-content: space-between; align-content: flex-start; align-self: stretch; align-items: stretch; flex-wrap: nowrap;">

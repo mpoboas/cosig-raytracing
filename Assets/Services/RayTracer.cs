@@ -172,41 +172,61 @@ public class RayTracer
 
     Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS)
     {
-        Color baseColor = Color.white;
-        float ambientCoeff = 0.1f, diffuseCoeff = 0.7f, specularCoeff = 0.2f;
-        float shininess = 32f;
+        // Default material properties
+        Color matColor = Color.white;
+        float kAmbient = 0.1f;
+        float kDiffuse = 0.7f;
         
+        // Retrieve material properties if valid
         if (hit.materialIndex >= 0 && hit.materialIndex < scene.Materials.Count)
         {
             var m = scene.Materials[hit.materialIndex];
-            baseColor = m.color;
-            ambientCoeff = m.ambient;
-            diffuseCoeff = m.diffuse;
-            specularCoeff = m.specular;
+            matColor = m.color;
+            kAmbient = m.ambient;
+            kDiffuse = m.diffuse;
         }
 
         Vector3 N = hit.normalWS.normalized;
-        Vector3 V = (-rayWS.direction).normalized;
-        Color result = ambientCoeff * baseColor;
+        Color totalColor = Color.black;
 
+        // Iterate through all lights
         foreach (var lp in lights)
         {
+            // 1. Ambient Component: light.Color * material.Color * material.Ambient
+            // Note: Assignment says treat ambient as originating from the specific light source
+            Color ambient = Mul(lp.rgb, matColor) * kAmbient;
+
+            // 2. Diffuse Component (Lambertian)
             Vector3 L = (lp.posWS - hit.positionWS).normalized;
-            float NdotL = Mathf.Max(0f, Vector3.Dot(N, L));
-            Color diffuse = diffuseCoeff * NdotL * Mul(baseColor, lp.rgb);
+            float cosTheta = Vector3.Dot(N, L);
+            
+            Color diffuse = Color.black;
+            if (cosTheta > 0)
+            {
+                // light.Color * material.Color * material.Diffuse * cosTheta
+                diffuse = Mul(lp.rgb, matColor) * kDiffuse * cosTheta;
+            }
+            // else diffuse is 0 (back face)
 
-            Vector3 H = (L + V).normalized;
-            float NdotH = Mathf.Max(0f, Vector3.Dot(N, H));
-            Color specular = specularCoeff * Mathf.Pow(NdotH, shininess) * lp.rgb;
-
-            result += diffuse + specular;
+            // Accumulate
+            totalColor += ambient + diffuse;
         }
 
-        result.r = Mathf.Clamp01(result.r);
-        result.g = Mathf.Clamp01(result.g);
-        result.b = Mathf.Clamp01(result.b);
-        result.a = 1f;
-        return result;
+        // Average the result
+        if (lights.Count > 0)
+        {
+            totalColor /= (float)lights.Count;
+        }
+
+        // Ensure alpha is 1
+        totalColor.a = 1f;
+        
+        // Clamp components to be safe (though not explicitly asked, it's good practice for display)
+        totalColor.r = Mathf.Clamp01(totalColor.r);
+        totalColor.g = Mathf.Clamp01(totalColor.g);
+        totalColor.b = Mathf.Clamp01(totalColor.b);
+
+        return totalColor;
     }
 
     static Color Mul(Color a, Color b) => new Color(a.r * b.r, a.g * b.g, a.b * b.b, 1f);
