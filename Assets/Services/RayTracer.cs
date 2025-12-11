@@ -95,8 +95,8 @@ public class RayTracer
                         Debug.Log($"[RT] Debugging Pixel (x={x}, y={y}) Ray origin={ray.origin} dir={ray.direction}");
                     }
                     
-                    // Trace the ray and get the color
-                    Color c = TracePrimary(scene, lightPoints, bvhRoot, ray, backgroundColor, dbg);
+                    // Trace the ray and get the color - Recursive depth starts at 2
+                    Color c = TraceRay(scene, lightPoints, bvhRoot, ray, backgroundColor, 2, dbg);
                     
                     // Store in array (SetPixel is not thread safe)
                     pixels[y * width + x] = c;
@@ -152,7 +152,7 @@ public class RayTracer
         return new BVHNode(objects);
     }
 
-    Color TracePrimary(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, IHittable bvhRoot, Ray rayWS, Color backgroundColor, bool debug = false)
+    Color TraceRay(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, IHittable bvhRoot, Ray rayWS, Color backgroundColor, int depth, bool debug = false)
     {
         if (bvhRoot.Hit(rayWS, 1e-6f, float.MaxValue, out HitRecord rec))
         {
@@ -160,7 +160,7 @@ public class RayTracer
             {
                 Debug.Log($"[RT] Hit: t={rec.t} pos=({rec.positionWS.x:F10}, {rec.positionWS.y:F10}, {rec.positionWS.z:F10}) n={rec.normalWS} mat={rec.materialIndex}");
             }
-            return Shade(scene, lights, rec, rayWS, bvhRoot);
+            return Shade(scene, lights, rec, rayWS, bvhRoot, depth);
         }
 
         if (debug)
@@ -170,7 +170,7 @@ public class RayTracer
         return backgroundColor;
     }
 
-    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS, IHittable bvhRoot)
+    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS, IHittable bvhRoot, int depth)
     {
         // Default material properties
         Color matColor = Color.white;
@@ -237,10 +237,115 @@ public class RayTracer
             totalColor += ambient + diffuse;
         }
 
-        // Average the result
+        // Average the result of direct lighting (ambient + diffuse)
         if (lights.Count > 0)
         {
             totalColor /= (float)lights.Count;
+        }
+
+        // --- Recursive Specular Reflection (Stage 6) ---
+        // If we have recursion depth left and the material is specular (has a non-zero coefficient)
+        if (depth > 0 && scene.Materials[hit.materialIndex].specular > 0)
+        {
+            var mat = scene.Materials[hit.materialIndex];
+            float kSpecular = mat.specular;
+
+            // Calculate cosine of the angle of incidence
+            // V is ray direction (incoming). N is normal.
+            // cosThetaV = -(V . N)
+            float cosThetaV = -Vector3.Dot(rayWS.direction, N);
+
+            if (cosThetaV > 0) // Ensure we are hitting the front face
+            {
+                // Calculate Reflection Vector R
+                // R = V + 2 * cos(theta) * N
+                Vector3 R = rayWS.direction + (2.0f * cosThetaV * N);
+                R.Normalize();
+
+                // Create Reflected Ray
+                // Offset origin by epsilon along normal to avoid self-intersection (acne)
+                Ray reflectedRay = new Ray(hit.positionWS + (1e-3f * N), R);
+
+                // Recursive call
+                Color reflectedColor = TraceRay(scene, lights, bvhRoot, reflectedRay, scene.Image != null ? scene.Image.background : Color.black, depth - 1);
+
+                // Add to total color: material.color * kSpecular * reflectedColor
+                // Using the simpler model requested first: material.color * material.specularCoefficient * traceRay(...)
+                Color specComponent = Mul(matColor, reflectedColor) * kSpecular;
+                
+                totalColor += specComponent;
+            }
+        }
+
+        // --- Recursive Refraction (Stage 7) ---
+        // If we have recursion depth left and the material has refraction
+        if (depth > 0 && scene.Materials[hit.materialIndex].refraction > 0)
+        {
+            var mat = scene.Materials[hit.materialIndex];
+            float kRefraction = mat.refraction;
+            float ior = mat.ior;
+
+            // Calculate cosine of incident angle
+            // cosThetaV = -(V . N)
+            // If > 0: Entering material (Ray opposes Normal)
+            // If < 0: Exiting material (Ray aligns with Normal)
+            float cosThetaV = -Vector3.Dot(rayWS.direction, N);
+            
+            float eta;
+            float cosThetaR_Squared;
+
+            // Assume Entering first (Air -> Object)
+            // Air IOR ~ 1.0
+            eta = 1.0f / ior;
+            
+            // Check direction to adjust eta and normal logic if Exiting
+            if (cosThetaV < 0)
+            {
+                // Exiting: Object -> Air
+                eta = ior; // (ior / 1.0)
+                // Note: The prompt logic suggests handling `cosThetaR` sign flip below, 
+                // effectively treating N as if it points into the volume, or solving math relative to same Normal.
+            }
+
+            // Calculate cos^2(ThetaR) using Snell's law identity:
+            // 1 - eta^2 * (1 - cos^2(ThetaV))
+            // Note: cosThetaV in calculation must be standard positive cosine for the trig identity? 
+            // The prompt formula uses `costThetaV` directly, which might be negative if exiting.
+            // Let's verify the prompt's specifics:
+            // "cosThetaR = sqrt(1.0 - eta*eta * (1.0 - cosThetaV*cosThetaV))" -> squaring kills the sign, so it works.
+            
+            float discriminant = 1.0f - (eta * eta) * (1.0f - cosThetaV * cosThetaV);
+
+            // Check for Total Internal Reflection (TIR)
+            if (discriminant >= 0.0f)
+            {
+                float cosThetaR = Mathf.Sqrt(discriminant);
+
+                // Adjust for Exiting Case per Prompt
+                if (cosThetaV < 0)
+                {
+                    cosThetaR = -cosThetaR;
+                }
+
+                // Calculate Refracted Vector R
+                // R = eta * V + (eta * cosThetaV - cosThetaR) * N
+                Vector3 R_refract = (eta * rayWS.direction) + ((eta * cosThetaV - cosThetaR) * N);
+                R_refract.Normalize();
+
+                // Create Refracted Ray
+                // Offset origin by epsilon along the refracted ray direction to avoid acne
+                // (Using prompt alternative: hit.point + epsilon * r)
+                Ray refractedRay = new Ray(hit.positionWS + (1e-3f * R_refract), R_refract);
+
+                // Recursive call
+                Color refractedColor = TraceRay(scene, lights, bvhRoot, refractedRay, scene.Image != null ? scene.Image.background : Color.black, depth - 1);
+
+                // Add to total color: material.color * kRefraction * refractedColor
+                Color refractComponent = Mul(matColor, refractedColor) * kRefraction;
+                
+                totalColor += refractComponent;
+            }
+            // else: Total Internal Reflection occurs, no refracted ray is spawned.
         }
 
         // Ensure alpha is 1

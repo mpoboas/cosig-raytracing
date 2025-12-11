@@ -123,7 +123,16 @@ This document summarizes the current project structure, scene models, parsing lo
   - Uses `Hit(shadowRay)` with epsilon `1e-3f` for acne prevention.
   - Checks if distance to intersection is less than distance to light.
 - Add support for multiple lights with attenuation.
-- Implement reflection/refraction (use `specular`, `refraction`, `ior`).
+- **[COMPLETED]** Implement reflection/refraction (recursive specular reflection).
+  - Implemented in `RayTracer.cs` (Stage 6).
+  - Recursively traces rays for materials with `specularCoefficient > 0`.
+  - Calculates reflection vector `R = V + 2N * cosTheta`.
+  - Uses recursion depth limit (default 2) and epsilon offset for acne.
+- **[COMPLETED]** Implement refraction (recursive refraction).
+  - Implemented in `RayTracer.cs` (Stage 7).
+  - Handles Entering/Exiting logic (Snell's Law).
+  - Handles Total Internal Reflection (TIR).
+  - Uses recursion depth limit and epsilon offset.
   - **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
   - **[COMPLETED]** Rigorous intersection logic (Barycentric, Quadratic, Slabs) with epsilon for precision.
   - **[COMPLETED]** Geometric transformations (World/Object space conversions) for rays and normals.
