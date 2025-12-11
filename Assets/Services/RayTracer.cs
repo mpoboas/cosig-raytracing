@@ -110,13 +110,25 @@ public class RayTracer
 
                 for (int x = 0; x < width; x++)
                 {
-                    // Calculate ray direction through the pixel
+                    // Calculate ray through the pixel
                     float u = ((x + 0.5f) / width - 0.5f) * planeWidth;
                     float v = ((y + 0.5f) / height - 0.5f) * planeHeight;
                     
-                    // UnityEngine.Ray takes origin and direction
-                    Vector3 rayDir = new Vector3(u, v, -cameraDistance).normalized;
-                    Ray ray = new Ray(new Vector3(0f, 0f, cameraDistance), rayDir);
+                    Ray ray;
+                    if (settings.IsOrthographic)
+                    {
+                        // Orthographic Projection: Parallel rays
+                        // Origin varies per pixel, direction is constant (0, 0, -1)
+                        Vector3 rayOrigin = new Vector3(u, v, cameraDistance);
+                        Vector3 rayDir = new Vector3(0f, 0f, -1f); // Already normalized
+                        ray = new Ray(rayOrigin, rayDir);
+                    }
+                    else
+                    {
+                        // Perspective Projection: Rays converge at camera origin
+                        Vector3 rayDir = new Vector3(u, v, -cameraDistance).normalized;
+                        ray = new Ray(new Vector3(0f, 0f, cameraDistance), rayDir);
+                    }
 
                     // Debug specific pixels from the support document - Apoio ao debugging - pontos de interseção
                     bool dbg = (y == 0 && x == 100) ||

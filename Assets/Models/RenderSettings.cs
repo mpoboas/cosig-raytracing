@@ -20,4 +20,7 @@ public struct RenderSettings
     public bool EnableDiffuse;
     public bool EnableSpecular; // Reflection
     public bool EnableRefraction;
+    
+    // Projection
+    public bool IsOrthographic; // If true, use parallel rays instead of perspective
 }

@@ -39,12 +39,15 @@ public class SceneBuilder : MonoBehaviour
     private Slider sldRotX, sldRotY, sldRotZ;
     private TextField txtRotX, txtRotY, txtRotZ; // Added for sync
     private TextField txtCamPosX, txtCamPosY, txtCamPosZ;
-    private TextField txtCamFov; // Note: UXML has "Fov", "Pos X", "Pos Y", "Pos Z" in FOV container? Need to verify naming carefully.
+    private TextField txtCamFov;
+    private Button btnOrthographic;
     // Renderer
     private TextField txtRecursionDepth;
 
     // State
     private bool isRendering = false;
+    private bool isOrthographicMode = false; // For orthographic projection toggle
+    private float sceneFov = 60f; // Store original FOV from scene for restoration
     private System.Diagnostics.Stopwatch stopwatch;
     private CancellationTokenSource cancellationTokenSource;
 
@@ -70,6 +73,14 @@ public class SceneBuilder : MonoBehaviour
 
         var btnExit = root.Q<Button>("btn-exit");
         if (btnExit != null) btnExit.clicked += OnExitClicked;
+
+        // Orthographic Projection Button
+        btnOrthographic = root.Q<Button>("cam_orto");
+        if (btnOrthographic != null) btnOrthographic.clicked += OnOrthographicClicked;
+
+        // GIF Generator Button
+        var btnGif = root.Q<Button>("gif");
+        if (btnGif != null) btnGif.clicked += OnGifClicked;
 
         lblElapsedTime = root.Q<Label>("lbl-elapsed-time");
         progressBar = root.Q<ProgressBar>("progress-bar");
@@ -321,7 +332,8 @@ public class SceneBuilder : MonoBehaviour
         // FOV - populate from scene so user can tweak
         if (data.Camera != null)
         {
-            if (txtCamFov != null) txtCamFov.value = data.Camera.verticalFovDeg.ToString("F1");
+            sceneFov = data.Camera.verticalFovDeg; // Store for restoration
+            if (txtCamFov != null) txtCamFov.value = sceneFov.ToString("F1");
         }
 
         // Recursion Depth - Default 2
@@ -398,6 +410,9 @@ public class SceneBuilder : MonoBehaviour
         {
             settings.CameraFovOverride = fov;
         }
+
+        // Projection mode
+        settings.IsOrthographic = isOrthographicMode;
 
         return settings;
     }
@@ -534,6 +549,123 @@ public class SceneBuilder : MonoBehaviour
 #if UNITY_EDITOR
         AssetDatabase.Refresh(); // Refresh assets to show the new file
 #endif
+    }
+
+    void OnOrthographicClicked()
+    {
+        // Toggle orthographic mode
+        isOrthographicMode = !isOrthographicMode;
+        
+        // Update button appearance to show state
+        if (btnOrthographic != null)
+        {
+            btnOrthographic.style.backgroundColor = isOrthographicMode 
+                ? new StyleColor(new Color(0.3f, 0.7f, 0.3f)) // Green when active
+                : new StyleColor(StyleKeyword.Initial);
+        }
+        
+        // Update FOV: 120 for orthographic, restore scene FOV otherwise
+        if (txtCamFov != null)
+        {
+            txtCamFov.value = isOrthographicMode ? "120" : sceneFov.ToString("F1");
+        }
+        
+        Debug.Log($"[SceneBuilder] Orthographic Projection: {(isOrthographicMode ? "ON" : "OFF")}");
+    }
+
+    async void OnGifClicked()
+    {
+        if (scene == null)
+        {
+            Debug.LogWarning("[SceneBuilder] No scene loaded. Load data first.");
+            StartCoroutine(ShowToast("No scene loaded!"));
+            return;
+        }
+
+        if (isRendering)
+        {
+            Debug.LogWarning("[SceneBuilder] Already rendering.");
+            return;
+        }
+
+        isRendering = true;
+        btnStart.SetEnabled(false);
+        
+        cancellationTokenSource = new CancellationTokenSource();
+        stopwatch = new System.Diagnostics.Stopwatch();
+        stopwatch.Start();
+
+        // Get current render settings as base
+        RenderSettings baseSettings = GetRenderSettingsFromUI();
+        
+        // Store original rotation text for later restoration
+        string origRotZ = txtRotZ?.value ?? "0";
+
+        try
+        {
+            Debug.Log("[SceneBuilder] Starting GIF generation (360° rotation)...");
+            
+            GifGenerator gifGen = new GifGenerator(rayTracer, scene);
+            
+            List<Texture2D> frames = await gifGen.GenerateRotationFrames(
+                baseSettings,
+                (progress, status) =>
+                {
+                    // Update UI on main thread
+                    if (progressBar != null) progressBar.value = progress * 100f;
+                    if (lblProgressText != null) lblProgressText.text = status;
+                },
+                cancellationTokenSource.Token
+            );
+
+            stopwatch.Stop();
+            
+            if (frames.Count > 0)
+            {
+                // Save GIF
+                string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string gifPath = $"Assets/Output/rotation_{timestamp}.gif";
+                
+                // Ensure output directory exists
+                if (!Directory.Exists("Assets/Output"))
+                {
+                    Directory.CreateDirectory("Assets/Output");
+                }
+                
+                gifGen.SaveGif(frames, gifPath, 15); // 15 centiseconds per frame = ~6.7 fps
+                
+                // Display the last frame (or first frame)
+                if (frames.Count > 0)
+                {
+                    lastRenderedTexture = frames[0];
+                    DisplayTexture(lastRenderedTexture);
+                }
+                
+                StartCoroutine(ShowToast($"GIF saved! {frames.Count} frames - {gifPath}"));
+                Debug.Log($"[SceneBuilder] GIF generated: {frames.Count} frames in {stopwatch.Elapsed.TotalSeconds:F2}s");
+                
+                if (lblElapsedTime != null)
+                {
+                    lblElapsedTime.text = $"GIF: {stopwatch.Elapsed.TotalSeconds:F2}s ({frames.Count} frames)";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[SceneBuilder] GIF generation failed: {ex.Message}");
+            StartCoroutine(ShowToast("GIF generation failed!"));
+        }
+        finally
+        {
+            // Restore original rotation
+            if (txtRotZ != null) txtRotZ.value = origRotZ;
+            if (sldRotZ != null && float.TryParse(origRotZ, out float rotZ)) sldRotZ.value = rotZ;
+            
+            isRendering = false;
+            btnStart.SetEnabled(true);
+            if (progressBar != null) progressBar.value = 100f;
+            if (lblProgressText != null) lblProgressText.text = "GIF Complete!";
+        }
     }
 
     void OnExitClicked()
