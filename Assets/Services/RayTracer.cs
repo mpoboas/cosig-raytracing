@@ -9,10 +9,10 @@ public class RayTracer
 {
     // We use UnityEngine.Ray and the HitRecord defined in IHittable.cs
 
-    public Texture2D Render(ObjectData scene)
+    public Texture2D Render(ObjectData scene, RenderSettings settings)
     {
         // Synchronous wrapper for backward compatibility
-        var task = RenderAsync(scene, null, CancellationToken.None);
+        var task = RenderAsync(scene, settings, null, CancellationToken.None);
         task.Wait();
         var (colors, width, height) = task.Result;
         
@@ -22,31 +22,63 @@ public class RayTracer
         return outputTexture;
     }
 
-    public async Task<(Color[] pixels, int width, int height)> RenderAsync(ObjectData scene, IProgress<float> progress, CancellationToken token)
+    public async Task<(Color[] pixels, int width, int height)> RenderAsync(ObjectData scene, RenderSettings settings, IProgress<float> progress, CancellationToken token)
     {
-        int width = Mathf.Max(1, scene.Image != null ? scene.Image.horizontal : 256);
-        int height = Mathf.Max(1, scene.Image != null ? scene.Image.vertical : 256);
-        Color backgroundColor = scene.Image != null ? scene.Image.background : Color.black;
+        // Apply Resolution Override
+        int width = settings.ResolutionOverride.HasValue ? settings.ResolutionOverride.Value.x : Mathf.Max(1, scene.Image != null ? scene.Image.horizontal : 256);
+        int height = settings.ResolutionOverride.HasValue ? settings.ResolutionOverride.Value.y : Mathf.Max(1, scene.Image != null ? scene.Image.vertical : 256);
+        
+        // Apply Background Color Override
+        Color backgroundColor = settings.BackgroundColorOverride.HasValue ? settings.BackgroundColorOverride.Value : (scene.Image != null ? scene.Image.background : Color.black);
 
         Color[] pixels = new Color[width * height];
 
         // --- Camera Setup ---
         Matrix4x4 sceneMat = Matrix4x4.identity;
-        if (scene.Camera != null && scene.Camera.transformationIndex >= 0 && scene.Camera.transformationIndex < scene.Transformations.Count)
-        {
-            var camComp = BuildComposite(scene.Transformations[scene.Camera.transformationIndex]);
-            sceneMat = camComp; // apply camera composite to the scene directly
-        }
-        Debug.Log($"[RT] Camera tIndex={scene.Camera?.transformationIndex} dist={scene.Camera?.distance} vfov={scene.Camera?.verticalFovDeg}");
-        Debug.Log($"[RT] Scene (camera) matrix (direct):\n{sceneMat}");
 
+        // Check if we have overrides for the camera
+        if (settings.CameraPositionOverride.HasValue || settings.CameraRotationOverride.HasValue)
+        {
+            // Construct View Matrix from overrides
+            // User inputs Camera World Position and Rotation.
+            // The scene transformation matrix (View Matrix) is the Inverse of the Camera's World Matrix.
+            
+            // Default to identity/zero if one component is missing but the other present
+            Vector3 camPos = settings.CameraPositionOverride ?? Vector3.zero;
+            Vector3 camRotEuler = settings.CameraRotationOverride ?? Vector3.zero;
+            Quaternion camRot = Quaternion.Euler(camRotEuler);
+
+            // Camera -> World
+            Matrix4x4 cameraToWorld = Matrix4x4.TRS(camPos, camRot, Vector3.one);
+            
+            // World -> Camera (Scene Matrix)
+            sceneMat = cameraToWorld.inverse;
+        }
+        else if (scene.Camera != null && scene.Camera.transformationIndex >= 0 && scene.Camera.transformationIndex < scene.Transformations.Count)
+        {
+            // Use existing scene camera setup
+            var camComp = BuildComposite(scene.Transformations[scene.Camera.transformationIndex]);
+            sceneMat = camComp; 
+        }
+
+        // Camera Distance always comes from scene (no UI override for distance currently)
+        float cameraDistance = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.distance) : 1f;
+
+        // FOV can be overridden from UI
+        float verticalFov = settings.CameraFovOverride.HasValue ? settings.CameraFovOverride.Value : (scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.verticalFovDeg) : 60f);
+
+        Debug.Log($"[RT] Camera tIndex={scene.Camera?.transformationIndex} dist={cameraDistance} vfov={verticalFov}");
+        Debug.Log($"[RT] Scene (camera) matrix (direct):\n{sceneMat}");
+        
         // --- Light Setup ---
+        // Apply Intensity Scale
+        float intensityScale = Mathf.Max(0f, settings.LightIntensityScale);
         List<(Vector3 posWS, Color rgb)> lightPoints = new List<(Vector3, Color)>();
         foreach (var light in scene.Lights)
         {
             Matrix4x4 lm = sceneMat * BuildByIndex(scene, light.transformationIndex);
             Vector3 pos = lm.MultiplyPoint3x4(Vector3.zero);
-            lightPoints.Add((pos, light.rgb));
+            lightPoints.Add((pos, light.rgb * intensityScale));
         }
 
         // --- Build BVH ---
@@ -55,8 +87,7 @@ public class RayTracer
         Debug.Log("[RT] BVH Built.");
 
         // --- Projection Plane Calculations ---
-        float cameraDistance = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.distance) : 1f;
-        float verticalFov = scene.Camera != null ? Mathf.Max(0.0001f, scene.Camera.verticalFovDeg) : 60f;
+        // If overriding, we just use the params. Original logic coupled distance to transformation.
         float aspect = (float)width / (float)height;
         float halfHeight = cameraDistance * Mathf.Tan(0.5f * verticalFov * Mathf.Deg2Rad);
         float planeHeight = 2f * halfHeight;
@@ -95,8 +126,9 @@ public class RayTracer
                         Debug.Log($"[RT] Debugging Pixel (x={x}, y={y}) Ray origin={ray.origin} dir={ray.direction}");
                     }
                     
-                    // Trace the ray and get the color - Recursive depth starts at 2
-                    Color c = TraceRay(scene, lightPoints, bvhRoot, ray, backgroundColor, 2, dbg);
+                    // Trace the ray and get the color - Recursive depth from settings
+                    // Pass settings to trace for toggles
+                    Color c = TraceRay(scene, lightPoints, bvhRoot, ray, backgroundColor, settings.MaxDepth, settings, dbg);
                     
                     // Store in array (SetPixel is not thread safe)
                     pixels[y * width + x] = c;
@@ -152,7 +184,7 @@ public class RayTracer
         return new BVHNode(objects);
     }
 
-    Color TraceRay(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, IHittable bvhRoot, Ray rayWS, Color backgroundColor, int depth, bool debug = false)
+    Color TraceRay(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, IHittable bvhRoot, Ray rayWS, Color backgroundColor, int depth, RenderSettings settings, bool debug = false)
     {
         if (bvhRoot.Hit(rayWS, 1e-6f, float.MaxValue, out HitRecord rec))
         {
@@ -160,7 +192,7 @@ public class RayTracer
             {
                 Debug.Log($"[RT] Hit: t={rec.t} pos=({rec.positionWS.x:F10}, {rec.positionWS.y:F10}, {rec.positionWS.z:F10}) n={rec.normalWS} mat={rec.materialIndex}");
             }
-            return Shade(scene, lights, rec, rayWS, bvhRoot, depth);
+            return Shade(scene, lights, rec, rayWS, bvhRoot, depth, settings);
         }
 
         if (debug)
@@ -170,7 +202,7 @@ public class RayTracer
         return backgroundColor;
     }
 
-    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS, IHittable bvhRoot, int depth)
+    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS, IHittable bvhRoot, int depth, RenderSettings settings)
     {
         // Default material properties
         Color matColor = Color.white;
@@ -233,8 +265,9 @@ public class RayTracer
             }
             // else diffuse is 0 (back face or shadowed)
 
-            // Accumulate
-            totalColor += ambient + diffuse;
+            // Accumulate based on enabled toggles
+            if (settings.EnableAmbient) totalColor += ambient;
+            if (settings.EnableDiffuse) totalColor += diffuse;
         }
 
         // Average the result of direct lighting (ambient + diffuse)
@@ -244,8 +277,8 @@ public class RayTracer
         }
 
         // --- Recursive Specular Reflection (Stage 6) ---
-        // If we have recursion depth left and the material is specular (has a non-zero coefficient)
-        if (depth > 0 && scene.Materials[hit.materialIndex].specular > 0)
+        // Checked Toggle: EnableSpecular
+        if (settings.EnableSpecular && depth > 0 && scene.Materials[hit.materialIndex].specular > 0)
         {
             var mat = scene.Materials[hit.materialIndex];
             float kSpecular = mat.specular;
@@ -267,7 +300,7 @@ public class RayTracer
                 Ray reflectedRay = new Ray(hit.positionWS + (1e-3f * N), R);
 
                 // Recursive call
-                Color reflectedColor = TraceRay(scene, lights, bvhRoot, reflectedRay, scene.Image != null ? scene.Image.background : Color.black, depth - 1);
+                Color reflectedColor = TraceRay(scene, lights, bvhRoot, reflectedRay, scene.Image != null ? scene.Image.background : Color.black, depth - 1, settings);
 
                 // Add to total color: material.color * kSpecular * reflectedColor
                 // Using the simpler model requested first: material.color * material.specularCoefficient * traceRay(...)
@@ -278,8 +311,8 @@ public class RayTracer
         }
 
         // --- Recursive Refraction (Stage 7) ---
-        // If we have recursion depth left and the material has refraction
-        if (depth > 0 && scene.Materials[hit.materialIndex].refraction > 0)
+        // Checked Toggle: EnableRefraction
+        if (settings.EnableRefraction && depth > 0 && scene.Materials[hit.materialIndex].refraction > 0)
         {
             var mat = scene.Materials[hit.materialIndex];
             float kRefraction = mat.refraction;
@@ -292,7 +325,6 @@ public class RayTracer
             float cosThetaV = -Vector3.Dot(rayWS.direction, N);
             
             float eta;
-            float cosThetaR_Squared;
 
             // Assume Entering first (Air -> Object)
             // Air IOR ~ 1.0
@@ -338,7 +370,7 @@ public class RayTracer
                 Ray refractedRay = new Ray(hit.positionWS + (1e-3f * R_refract), R_refract);
 
                 // Recursive call
-                Color refractedColor = TraceRay(scene, lights, bvhRoot, refractedRay, scene.Image != null ? scene.Image.background : Color.black, depth - 1);
+                Color refractedColor = TraceRay(scene, lights, bvhRoot, refractedRay, scene.Image != null ? scene.Image.background : Color.black, depth - 1, settings);
 
                 // Add to total color: material.color * kRefraction * refractedColor
                 Color refractComponent = Mul(matColor, refractedColor) * kRefraction;

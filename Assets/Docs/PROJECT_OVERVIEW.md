@@ -123,19 +123,30 @@ This document summarizes the current project structure, scene models, parsing lo
   - Uses `Hit(shadowRay)` with epsilon `1e-3f` for acne prevention.
   - Checks if distance to intersection is less than distance to light.
 - Add support for multiple lights with attenuation.
-- **[COMPLETED]** Implement reflection/refraction (recursive specular reflection).
+- **[COMPLETED]** Implement reflection (recursive specular reflection).
   - Implemented in `RayTracer.cs` (Stage 6).
   - Recursively traces rays for materials with `specularCoefficient > 0`.
   - Calculates reflection vector `R = V + 2N * cosTheta`.
-  - Uses recursion depth limit (default 2) and epsilon offset for acne.
+  - Uses recursion depth limit and epsilon offset for acne prevention.
 - **[COMPLETED]** Implement refraction (recursive refraction).
   - Implemented in `RayTracer.cs` (Stage 7).
-  - Handles Entering/Exiting logic (Snell's Law).
+  - Handles Entering/Exiting logic using Snell's Law.
   - Handles Total Internal Reflection (TIR).
   - Uses recursion depth limit and epsilon offset.
-  - **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
-  - **[COMPLETED]** Rigorous intersection logic (Barycentric, Quadratic, Slabs) with epsilon for precision.
-  - **[COMPLETED]** Geometric transformations (World/Object space conversions) for rays and normals.
+- **[COMPLETED]** UI Integration (Stage 8).
+  - Wired up `gui_raytracing.uxml` controls to `RayTracer` via `RenderSettings` struct.
+  - **Resolution**: X/Y override from text fields.
+  - **Background Color**: RGB sliders (0-100) synced with RGB text fields (0-255).
+  - **Light Intensity**: Slider + text field synced (default 1.0).
+  - **Lighting Toggles**: Ambient, Diffuse, Specular (reflection), Refraction enable/disable.
+  - **Camera Position**: X/Y/Z text fields for camera override.
+  - **Camera Rotation**: X/Y/Z sliders (0-100 mapped to 0-360 degrees).
+  - **Camera FOV**: Text field for FOV override.
+  - **Recursion Depth**: Text field for max recursion.
+  - **Priority Logic**: Scene file values populate UI on load; UI values override at render time.
+- **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
+- **[COMPLETED]** Rigorous intersection logic (Barycentric, Quadratic, Slabs) with epsilon for precision.
+- **[COMPLETED]** Geometric transformations (World/Object space conversions) for rays and normals.
 - Tone mapping / gamma correction if needed.
 
 ## Quick Start (Runtime)
