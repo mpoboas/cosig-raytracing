@@ -37,28 +37,33 @@ public class RayTracer
         Matrix4x4 sceneMat = Matrix4x4.identity;
 
         // Check if we have overrides for the camera
+        // Calculate the base scene matrix first (if available) -> This is the transformation of the SCENE relative to the camera
+        Matrix4x4 baseSceneMat = Matrix4x4.identity;
+        Vector3 basePos = Vector3.zero;
+        if (scene.Camera != null && scene.Camera.transformationIndex >= 0 && scene.Camera.transformationIndex < scene.Transformations.Count)
+        {
+             baseSceneMat = BuildComposite(scene.Transformations[scene.Camera.transformationIndex]);
+             // Extract position from the matrix column 3
+             basePos = baseSceneMat.GetColumn(3);
+        }
+
         if (settings.CameraPositionOverride.HasValue || settings.CameraRotationOverride.HasValue)
         {
-            // Construct View Matrix from overrides
-            // User inputs Camera World Position and Rotation.
-            // The scene transformation matrix (View Matrix) is the Inverse of the Camera's World Matrix.
+            // Camera Override Logic
+            // If Position is NOT overridden, use the Base Position from the scene file to avoid snapping to (0,0,0).
+            Vector3 camPos = settings.CameraPositionOverride ?? basePos;
             
-            // Default to identity/zero if one component is missing but the other present
-            Vector3 camPos = settings.CameraPositionOverride ?? Vector3.zero;
+            // Rotation is always absolute from UI (0,0,0 means identity)
             Vector3 camRotEuler = settings.CameraRotationOverride ?? Vector3.zero;
             Quaternion camRot = Quaternion.Euler(camRotEuler);
 
-            // Camera -> World
-            Matrix4x4 cameraToWorld = Matrix4x4.TRS(camPos, camRot, Vector3.one);
-            
-            // World -> Camera (Scene Matrix)
-            sceneMat = cameraToWorld.inverse;
+            // Create transformation matrix
+            sceneMat = Matrix4x4.TRS(camPos, camRot, Vector3.one);
         }
-        else if (scene.Camera != null && scene.Camera.transformationIndex >= 0 && scene.Camera.transformationIndex < scene.Transformations.Count)
+        else
         {
-            // Use existing scene camera setup
-            var camComp = BuildComposite(scene.Transformations[scene.Camera.transformationIndex]);
-            sceneMat = camComp; 
+            // Use existing scene camera setup directly
+            sceneMat = baseSceneMat; 
         }
 
         // Camera Distance always comes from scene (no UI override for distance currently)

@@ -37,6 +37,7 @@ public class SceneBuilder : MonoBehaviour
     private Toggle togAmbient, togDiffuse, togSpecular, togRefraction;
     // Camera
     private Slider sldRotX, sldRotY, sldRotZ;
+    private TextField txtRotX, txtRotY, txtRotZ; // Added for sync
     private TextField txtCamPosX, txtCamPosY, txtCamPosZ;
     private TextField txtCamFov; // Note: UXML has "Fov", "Pos X", "Pos Y", "Pos Z" in FOV container? Need to verify naming carefully.
     // Renderer
@@ -163,6 +164,7 @@ public class SceneBuilder : MonoBehaviour
         }
 
         // Camera Axis Rotation ("Axis_Rotation")
+        // Sliders for Rotation
         var axisRotContainer = root.Q<VisualElement>("Axis_Rotation");
         if (axisRotContainer != null)
         {
@@ -172,28 +174,63 @@ public class SceneBuilder : MonoBehaviour
                 sldRotX = sliders[0];
                 sldRotY = sliders[1];
                 sldRotZ = sliders[2];
+                
+                // Set high-value to 360 for degrees
+                sldRotX.highValue = 360;
+                sldRotY.highValue = 360;
+                sldRotZ.highValue = 360;
             }
         }
 
-        // Camera Pos ("Pos") - use these for camera position override
+        // Camera Rotation Text Fields (in "Pos" container - confusing name in UXML but contains axis_text-x/y/z)
+        // We will misuse the existing txtCamPosX/Y/Z variables for POSITION, so let's create new ones for ROTATION?
+        // Wait, I need to declare them first. I'll add them to the class.
+        // For now, let's assume I can add them here or I should add specific variables.
+        // Let's declare them in the class structure in a separate edit if needed, or misuse existing if possible? No, bad practice.
+        // I will use local variables for binding and then store them in class fields. I need to simple add definitions.
+        
         var posContainer = root.Q<VisualElement>("Pos");
         if (posContainer != null)
         {
             var textFields = posContainer.Query<TextField>().ToList();
             if (textFields.Count >= 3)
             {
-                txtCamPosX = textFields[0]; // Label X
-                txtCamPosY = textFields[1]; // Label Y
-                txtCamPosZ = textFields[2]; // Label Z
+                txtRotX = textFields[0]; // axis_text-x
+                txtRotY = textFields[1]; // axis_text-y
+                txtRotZ = textFields[2]; // axis_text-z
             }
         }
 
-        // Camera FOV ("FOV" container)
+        // Camera FOV and POSITION (in "FOV" container)
         var fovContainer = root.Q<VisualElement>("FOV");
         if (fovContainer != null)
         {
              var textFields = fovContainer.Query<TextField>().ToList();
-             if (textFields.Count > 0) txtCamFov = textFields[0]; // First is Fov
+             // 0: Fov, 1: Pos X, 2: Pos Y, 3: Pos Z
+             if (textFields.Count >= 1) txtCamFov = textFields[0];
+             if (textFields.Count >= 4)
+             {
+                 txtCamPosX = textFields[1];
+                 txtCamPosY = textFields[2];
+                 txtCamPosZ = textFields[3];
+             }
+        }
+        
+        // Sync Rotation Sliders <-> Text Fields
+        if (sldRotX != null && txtRotX != null)
+        {
+            sldRotX.RegisterValueChangedCallback(evt => txtRotX.value = evt.newValue.ToString("F0"));
+            txtRotX.RegisterValueChangedCallback(evt => { if (float.TryParse(evt.newValue, out float v)) sldRotX.SetValueWithoutNotify(v); });
+        }
+         if (sldRotY != null && txtRotY != null)
+        {
+            sldRotY.RegisterValueChangedCallback(evt => txtRotY.value = evt.newValue.ToString("F0"));
+            txtRotY.RegisterValueChangedCallback(evt => { if (float.TryParse(evt.newValue, out float v)) sldRotY.SetValueWithoutNotify(v); });
+        }
+         if (sldRotZ != null && txtRotZ != null)
+        {
+            sldRotZ.RegisterValueChangedCallback(evt => txtRotZ.value = evt.newValue.ToString("F0"));
+            txtRotZ.RegisterValueChangedCallback(evt => { if (float.TryParse(evt.newValue, out float v)) sldRotZ.SetValueWithoutNotify(v); });
         }
 
         // Renderer ("Renderer" container)
@@ -234,16 +271,52 @@ public class SceneBuilder : MonoBehaviour
         if (txtLightIntensity != null) txtLightIntensity.value = "1.0";
 
         // Camera Pos/Rot
-        // Don't populate camera position fields - leave them empty so scene camera is used.
-        // If user wants to override, they can type values.
-        if (txtCamPosX != null) txtCamPosX.value = "";
-        if (txtCamPosY != null) txtCamPosY.value = "";
-        if (txtCamPosZ != null) txtCamPosZ.value = "";
-        
-        // Reset rotation sliders to 0 (no rotation override)
-        if (sldRotX != null) sldRotX.value = 0;
-        if (sldRotY != null) sldRotY.value = 0;
-        if (sldRotZ != null) sldRotZ.value = 0;
+        // Initialize with default 0
+        float initRotX = 0, initRotY = 0, initRotZ = 0;
+        float initPosX = 0, initPosY = 0, initPosZ = 0;
+
+        // Try to calculate initial transform from scene camera transformation
+        if (data.Camera != null && data.Transformations != null && data.Camera.transformationIndex >= 0)
+        {
+             var comp = data.Transformations[data.Camera.transformationIndex];
+             Matrix4x4 mat = Matrix4x4.identity;
+             foreach (var el in comp.Elements)
+             {
+                 switch (el.Type)
+                 {
+                     case TransformType.T: mat *= Matrix4x4.Translate(el.XYZ); break;
+                     case TransformType.Rx: mat *= Matrix4x4.Rotate(Quaternion.Euler(el.AngleDeg, 0, 0)); break;
+                     case TransformType.Ry: mat *= Matrix4x4.Rotate(Quaternion.Euler(0, el.AngleDeg, 0)); break;
+                     case TransformType.Rz: mat *= Matrix4x4.Rotate(Quaternion.Euler(0, 0, el.AngleDeg)); break;
+                     case TransformType.S: mat *= Matrix4x4.Scale(el.XYZ); break;
+                 }
+             }
+             
+             // Extract Rotation
+             Vector3 euler = mat.rotation.eulerAngles;
+             initRotX = euler.x;
+             initRotY = euler.y;
+             initRotZ = euler.z;
+             
+             // Extract Position
+             Vector3 pos = mat.GetColumn(3);
+             initPosX = pos.x;
+             initPosY = pos.y;
+             initPosZ = pos.z;
+        }
+
+        // Populate Position Text Fields
+        if (txtCamPosX != null) txtCamPosX.value = initPosX.ToString("F1");
+        if (txtCamPosY != null) txtCamPosY.value = initPosY.ToString("F1");
+        if (txtCamPosZ != null) txtCamPosZ.value = initPosZ.ToString("F1");
+
+        // Populate Rotation Controls
+        if (sldRotX != null) sldRotX.value = initRotX;
+        if (sldRotY != null) sldRotY.value = initRotY;
+        if (sldRotZ != null) sldRotZ.value = initRotZ;
+        if (txtRotX != null) txtRotX.value = initRotX.ToString("F0");
+        if (txtRotY != null) txtRotY.value = initRotY.ToString("F0");
+        if (txtRotZ != null) txtRotZ.value = initRotZ.ToString("F0");
         
         // FOV - populate from scene so user can tweak
         if (data.Camera != null)
@@ -305,18 +378,18 @@ public class SceneBuilder : MonoBehaviour
             settings.CameraPositionOverride = new Vector3(cx, cy, cz);
         }
 
-        // Rotations - Only set override if at least one slider is non-zero
+        // Rotations 
+        // Use values directly (0-360)
+        // Check if any slider is non-zero
         if (sldRotX != null || sldRotY != null || sldRotZ != null)
         {
             float rotX = sldRotX != null ? sldRotX.value : 0;
             float rotY = sldRotY != null ? sldRotY.value : 0;
             float rotZ = sldRotZ != null ? sldRotZ.value : 0;
             
-            // Only set override if any rotation is non-zero
             if (rotX != 0 || rotY != 0 || rotZ != 0)
             {
-                // Map 0-100 to 0-360 for full rotation range.
-                settings.CameraRotationOverride = new Vector3(rotX * 3.6f, rotY * 3.6f, rotZ * 3.6f);
+                settings.CameraRotationOverride = new Vector3(rotX, rotY, rotZ);
             }
         }
 
