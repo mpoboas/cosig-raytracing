@@ -118,7 +118,10 @@ This document summarizes the current project structure, scene models, parsing lo
 ## Known Issues / Next Steps
 
 - Determine the correct global camera transform usage (direct vs. inverse) based on frustum checks; the current code includes diagnostics to guide this.
-- Add hard shadows: cast shadow rays toward each light and test for occlusion.
+- **[COMPLETED]** Add hard shadows: cast shadow rays toward each light and test for occlusion.
+  - Implemented in `RayTracer.cs`.
+  - Uses `Hit(shadowRay)` with epsilon `1e-3f` for acne prevention.
+  - Checks if distance to intersection is less than distance to light.
 - Add support for multiple lights with attenuation.
 - Implement reflection/refraction (use `specular`, `refraction`, `ior`).
   - **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.

@@ -160,7 +160,7 @@ public class RayTracer
             {
                 Debug.Log($"[RT] Hit: t={rec.t} pos=({rec.positionWS.x:F10}, {rec.positionWS.y:F10}, {rec.positionWS.z:F10}) n={rec.normalWS} mat={rec.materialIndex}");
             }
-            return Shade(scene, lights, rec, rayWS);
+            return Shade(scene, lights, rec, rayWS, bvhRoot);
         }
 
         if (debug)
@@ -170,7 +170,7 @@ public class RayTracer
         return backgroundColor;
     }
 
-    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS)
+    Color Shade(ObjectData scene, List<(Vector3 posWS, Color rgb)> lights, HitRecord hit, Ray rayWS, IHittable bvhRoot)
     {
         // Default material properties
         Color matColor = Color.white;
@@ -197,16 +197,41 @@ public class RayTracer
             Color ambient = Mul(lp.rgb, matColor) * kAmbient;
 
             // 2. Diffuse Component (Lambertian)
-            Vector3 L = (lp.posWS - hit.positionWS).normalized;
+            // Calculate vector L from intersection point to light
+            Vector3 L_vec = lp.posWS - hit.positionWS;
+            float tLight = L_vec.magnitude;
+            Vector3 L = L_vec / tLight; // Normalize manually to keep length for shadow check or use .normalized
+
             float cosTheta = Vector3.Dot(N, L);
             
             Color diffuse = Color.black;
+            
+            // Only calculate diffuse if facing the light
             if (cosTheta > 0)
             {
-                // light.Color * material.Color * material.Diffuse * cosTheta
-                diffuse = Mul(lp.rgb, matColor) * kDiffuse * cosTheta;
+                bool inShadow = false;
+
+                // --- Shadow Projection Step ---
+                // We cast a shadow ray from the hit point towards the light.
+                // If it hits anything between the surface (t > epsilon) and the light (t < tLight),
+                // then the point is in shadow.
+                
+                Ray shadowRay = new Ray(hit.positionWS, L);
+                
+                // Use epsilon (1e-3f) for tMin to avoid "shadow acne" (self-intersection due to float precision).
+                // Use tLight for tMax so we don't check for objects BEHIND the light.
+                if (bvhRoot.Hit(shadowRay, 1e-3f, tLight, out HitRecord shadowRec))
+                {
+                    inShadow = true;
+                }
+
+                if (!inShadow)
+                {
+                    // light.Color * material.Color * material.Diffuse * cosTheta
+                    diffuse = Mul(lp.rgb, matColor) * kDiffuse * cosTheta;
+                }
             }
-            // else diffuse is 0 (back face)
+            // else diffuse is 0 (back face or shadowed)
 
             // Accumulate
             totalColor += ambient + diffuse;
