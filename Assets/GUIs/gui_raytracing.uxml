@@ -13,7 +13,7 @@
                         <ui:Label text="Ray Traced Image" style="-unity-text-align: upper-center;" />
                     </ui:VisualElement>
                     <ui:VisualElement name="progress-container" style="flex-grow: 1; margin-left: 20px; margin-right: 20px; margin-top: 10px; margin-bottom: 10px; min-height: auto; width: auto; flex-direction: column; flex-basis: 30%; align-self: stretch; align-content: flex-start; justify-content: center;">
-                        <ui:Label name="lbl-elapsed-time" text="Elapsed Time: 00:00:00" style="-unity-text-align: upper-center; margin-bottom: 8px;" />
+                        <ui:Label name="lbl-elapsed-time" text="Elapsed Time: 00:00:00.000" style="-unity-text-align: upper-center; margin-bottom: 8px;" />
                         <ui:ProgressBar name="progress-bar" value="0" style="flex-direction: column; -unity-background-scale-mode: stretch-to-fill; rotate: 0; transform-origin: center; scale: 1 1;" />
                         <ui:Label name="lbl-progress-text" text="Progress 0%" style="margin-top: 8px; -unity-text-align: upper-center;" />
                     </ui:VisualElement>

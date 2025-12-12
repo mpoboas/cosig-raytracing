@@ -50,9 +50,18 @@ public class SceneBuilder : MonoBehaviour
     private float sceneFov = 60f; // Store original FOV from scene for restoration
     private System.Diagnostics.Stopwatch stopwatch;
     private CancellationTokenSource cancellationTokenSource;
+    private Coroutine gifPlaybackCoroutine;
+    private List<Texture2D> gifFrames;
+
+    public ComputeShader rayTracingShader;
 
     void OnEnable()
     {
+        // initialize ray tracer shader
+        if (rayTracingShader != null)
+        {
+             rayTracer.SetComputeShader(rayTracingShader);
+        }
         uiDocument = FindFirstObjectByType<UIDocument>();
         if (uiDocument == null)
         {
@@ -370,19 +379,20 @@ public class SceneBuilder : MonoBehaviour
         else settings.LightIntensityScale = 1.0f;
 
         // Toggles
-        settings.EnableAmbient = togAmbient == null || togAmbient.value;
-        settings.EnableDiffuse = togDiffuse == null || togDiffuse.value;
-        settings.EnableSpecular = togSpecular == null || togSpecular.value;
-        settings.EnableRefraction = togRefraction == null || togRefraction.value;
-
         // Recursion
         if (int.TryParse(txtRecursionDepth?.value, out int depth))
+        {
             settings.MaxDepth = depth;
-        else
-            settings.MaxDepth = 2;
+        }
+        else settings.MaxDepth = 2; // Default
+        
+        // Lighting toggles (default to true if not found)
+        settings.EnableAmbient = togAmbient?.value ?? true;
+        settings.EnableDiffuse = togDiffuse?.value ?? true;
+        settings.EnableSpecular = togSpecular?.value ?? true;
+        settings.EnableRefraction = togRefraction?.value ?? true;
 
-        // Camera
-        // Check if any value is set/valid to trigger override
+        // Camera Position Overrideck if any value is set/valid to trigger override
         if (float.TryParse(txtCamPosX?.value, out float cx) && 
             float.TryParse(txtCamPosY?.value, out float cy) && 
             float.TryParse(txtCamPosZ?.value, out float cz))
@@ -436,13 +446,27 @@ public class SceneBuilder : MonoBehaviour
             TimeSpan ts = stopwatch.Elapsed;
             if (lblElapsedTime != null)
             {
-                lblElapsedTime.text = $"Elapsed Time: {ts:hh\\:mm\\:ss}";
+                if (ts.TotalSeconds < 10)
+                    lblElapsedTime.text = $"Elapsed Time: {ts.TotalSeconds:F3}s";
+                else if (ts.TotalMinutes < 1)
+                    lblElapsedTime.text = $"Elapsed Time: {ts.Seconds}s";
+                else if (ts.TotalHours < 1)
+                    lblElapsedTime.text = $"Elapsed Time: {ts.Minutes}m {ts.Seconds}s";
+                else
+                    lblElapsedTime.text = $"Elapsed Time: {ts.Hours}H {ts.Minutes}m {ts.Seconds}s";
             }
         }
     }
 
     async void OnStartRayTracingClicked()
     {
+        // Stop any existing GIF playback
+        if (gifPlaybackCoroutine != null)
+        {
+            StopCoroutine(gifPlaybackCoroutine);
+            gifPlaybackCoroutine = null;
+        }
+
         if (isRendering)
         {
             // Cancel if already running? Or just ignore?
@@ -477,12 +501,16 @@ public class SceneBuilder : MonoBehaviour
             // Gather Settings
             RenderSettings settings = GetRenderSettingsFromUI();
             
-            var result = await rayTracer.RenderAsync(scene, settings, progress, cancellationTokenSource.Token);
+            var resultTexture = await rayTracer.RenderAsync(scene, settings, progress, cancellationTokenSource.Token);
             
-            // Create texture on main thread
-            lastRenderedTexture = new Texture2D(result.width, result.height, TextureFormat.RGBA32, false);
-            lastRenderedTexture.SetPixels(result.pixels);
-            lastRenderedTexture.Apply();
+            if (resultTexture == null)
+            {
+                Debug.LogWarning("Render returned null. Make sure the ComputeShader is assigned in the Inspector.");
+                StartCoroutine(ShowToast("Render failed - check ComputeShader assignment!"));
+                return;
+            }
+            
+            lastRenderedTexture = resultTexture;
             
             DisplayTexture(lastRenderedTexture);
             Debug.Log("Ray tracing complete.");
@@ -621,24 +649,36 @@ public class SceneBuilder : MonoBehaviour
             stopwatch.Stop();
             
             if (frames.Count > 0)
+        {
+            // Save GIF with progress reporting
+            string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string gifPath = $"Assets/Output/rotation_{timestamp}.gif";
+            
+            // Ensure output directory exists
+            if (!Directory.Exists("Assets/Output"))
             {
-                // Save GIF
-                string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string gifPath = $"Assets/Output/rotation_{timestamp}.gif";
-                
-                // Ensure output directory exists
-                if (!Directory.Exists("Assets/Output"))
+                Directory.CreateDirectory("Assets/Output");
+            }
+            
+            // Use async version with progress for encoding phase
+            await gifGen.SaveGifAsync(frames, gifPath, 
+                (progress, status) =>
                 {
-                    Directory.CreateDirectory("Assets/Output");
-                }
-                
-                gifGen.SaveGif(frames, gifPath, 15); // 15 centiseconds per frame = ~6.7 fps
+                    if (progressBar != null) progressBar.value = progress * 100f;
+                    if (lblProgressText != null) lblProgressText.text = status;
+                }, 
+                15); // 15 centiseconds per frame = ~6.7 fps
                 
                 // Display the last frame (or first frame)
                 if (frames.Count > 0)
                 {
+                    gifFrames = frames;
                     lastRenderedTexture = frames[0];
                     DisplayTexture(lastRenderedTexture);
+                    
+                    // Start playback
+                    if (gifPlaybackCoroutine != null) StopCoroutine(gifPlaybackCoroutine);
+                    gifPlaybackCoroutine = StartCoroutine(PlayGifLoop(0.15f)); // 15cs delay
                 }
                 
                 StartCoroutine(ShowToast($"GIF saved! {frames.Count} frames - {gifPath}"));
@@ -685,29 +725,46 @@ public class SceneBuilder : MonoBehaviour
         var container = uiDocument.rootVisualElement.Q<VisualElement>("ray-traced-image");
         if (container != null)
         {
-            // Clear any existing content
-            container.Clear();
-            
-            // Create a new UI Toolkit Image element
-            var image = new UnityEngine.UIElements.Image();
+            // Check if we already have an Image element
+            var image = container.Q<UnityEngine.UIElements.Image>();
+            if (image == null)
+            {
+                // Create a new UI Toolkit Image element if none exists
+                image = new UnityEngine.UIElements.Image();
+                
+                // Set image to scale to fit the container while maintaining aspect ratio
+                image.style.width = new StyleLength(Length.Percent(100));
+                image.style.height = new StyleLength(Length.Percent(100));
+                image.scaleMode = ScaleMode.ScaleToFit;
+                
+                // Add the image to the container
+                container.Add(image);
+            }
             
             // Convert the Texture2D to a Sprite
             var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
             image.sprite = sprite;
             
-            // Set image to scale to fit the container while maintaining aspect ratio
-            image.style.width = new StyleLength(Length.Percent(100));
-            image.style.height = new StyleLength(Length.Percent(100));
-            image.scaleMode = ScaleMode.ScaleToFit;
-            
-            // Add the image to the container
-            container.Add(image);
-            
-            Debug.Log("Displayed render on UI Toolkit VisualElement.");
+            // Debug.Log("Displayed render on UI Toolkit VisualElement."); 
         }
         else
         {
             Debug.LogWarning("Could not find 'ray-traced-image' VisualElement in the UI Document.");
+        }
+    }
+
+    IEnumerator PlayGifLoop(float delay)
+    {
+        if (gifFrames == null || gifFrames.Count == 0) yield break;
+
+        int index = 0;
+        while (true)
+        {
+            if (gifFrames.Count == 0) break;
+            
+            index = (index + 1) % gifFrames.Count;
+            DisplayTexture(gifFrames[index]);
+            yield return new WaitForSeconds(delay);
         }
     }
 

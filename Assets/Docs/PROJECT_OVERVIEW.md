@@ -1,195 +1,254 @@
 # COSIG Ray Tracing Project Overview
 
-This document summarizes the current project structure, scene models, parsing logic, ray tracing pipeline, and constraints. It is intended to onboard contributors (human or LLM) quickly and capture decisions made in this session.
+This document summarizes the current project structure, scene models, parsing logic, **GPU-accelerated ray tracing pipeline**, and constraints. It is intended to onboard contributors (human or LLM) quickly and capture decisions made during development.
 
 ## Goals
 
-- Parse a brace-based scene description file and render an image via CPU ray tracing (no Unity primitive instantiation).
+- Parse a brace-based scene description file and render an image via **GPU compute shader ray tracing**.
 - Support composite transformations, materials, light(s), spheres, boxes, and triangle meshes.
+- Achieve real-time or near-real-time rendering performance through GPU acceleration.
+- Support full recursive ray tracing: shadows, reflections, and refractions.
 
-## Project Structure (key files)
+## Architecture Overview
+
+The project uses a **hybrid CPU-GPU pipeline**:
+
+1. **CPU**: Scene parsing, BVH construction, and UI management
+2. **GPU**: Ray tracing (intersection, shading, shadows, reflections, refractions)
+
+```
+Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Triangles
+                                ↓
+                           BVHBuilder → GPU BVH Nodes
+                                ↓
+                        RayTracer (Compute Shader) → Rendered Texture
+```
+
+## Project Structure (Key Files)
+
+### Models
 
 - `Assets/Models/ObjectData.cs`
   - Defines the scene model used throughout parsing and rendering:
-    - `ObjectData`
-      - `ImageSettings Image`
-      - `List<CompositeTransformation> Transformations`
-      - `CameraSettings Camera`
-      - `List<LightSource> Lights`
-      - `List<MaterialDescription> Materials`
-      - `List<TrianglesMesh> TriangleMeshes`
-      - `List<SphereDescription> Spheres`
-      - `List<BoxDescription> Boxes`
-    - `ImageSettings` (horizontal, vertical, background `Color`)
-    - `CompositeTransformation` (ordered `List<TransformElement>`)
-    - `TransformType` enum: `T`, `Rx`, `Ry`, `Rz`, `S`
-    - `TransformElement` (either `XYZ` for `T`/`S` or `AngleDeg` for rotations)
-    - `CameraSettings` (transformationIndex, distance, verticalFovDeg)
-    - `LightSource` (transformationIndex, `Color` rgb)
-    - `MaterialDescription` (color, ambient, diffuse, specular, refraction, ior)
-    - `TrianglesMesh` (transformationIndex, `List<Triangle>`)
-    - `Triangle` (materialIndex, v0, v1, v2)
-    - `SphereDescription` (transformationIndex, materialIndex)
-    - `BoxDescription` (transformationIndex, materialIndex)
+    - `ObjectData`: Root container with Image, Transformations, Camera, Lights, Materials, TriangleMeshes, Spheres, Boxes
+    - `ImageSettings`: Resolution (horizontal, vertical) and background `Color`
+    - `CompositeTransformation`: Ordered list of `TransformElement` operations
+    - `TransformType` enum: `T` (translate), `Rx`, `Ry`, `Rz` (rotate), `S` (scale)
+    - `CameraSettings`: transformationIndex, distance, verticalFovDeg
+    - `LightSource`: transformationIndex, RGB color
+    - `MaterialDescription`: color, ambient, diffuse, specular, refraction, ior
+    - `TrianglesMesh`: transformationIndex, list of triangles
+    - `Triangle`: materialIndex, v0, v1, v2
+    - `SphereDescription`, `BoxDescription`: transformationIndex, materialIndex
+
+- `Assets/Models/RenderSettings.cs`
+  - Settings struct passed from UI to renderer:
+    - Resolution, Background Color, Light Intensity
+    - Camera Position/Rotation/FOV overrides
+    - MaxDepth (recursion limit)
+    - EnableAmbient, EnableDiffuse, EnableSpecular, EnableRefraction toggles
+    - IsOrthographic projection mode
+
+### Services
 
 - `Assets/Services/SceneService.cs`
-  - Parses the scene description file (e.g., `Assets/Resources/Scenes/test_scene_1.txt`).
-  - Segments (order-agnostic), each with braces:
-    - `Image { horiz vert; r g b }`
-    - `Transformation { T x y z | Rx a | Ry a | Rz a | S x y z ... }`
-    - `Camera { transformIndex; distance; verticalFov }`
-    - `Light { transformIndex; r g b }`
-    - `Material { r g b; ambient diffuse specular refraction ior }`
-    - `Triangles { transformIndex; [material; v0; v1; v2]... }`
-    - `Sphere { transformIndex; material }`
-    - `Box { transformIndex; material }`
-  - `LoadScene(filePath)` returns a populated `ObjectData`.
-  - `LoadSceneObjects(filePath)` retained as a thin compatibility wrapper (returns list with one `ObjectData`).
+  - Parses scene description files (e.g., `Assets/Resources/Scenes/eval_scene.txt`)
+  - Segments (order-agnostic): Image, Transformation, Camera, Light, Material, Triangles, Sphere, Box
+  - `LoadScene(filePath)` returns a populated `ObjectData`
 
-- `Assets/Services/RayTracer.cs`
-  - CPU ray tracer producing a `Texture2D` (and optional PNG) from `ObjectData`.
-  - Responsibilities:
-    - Build matrices from `CompositeTransformation` in the listed order (pre-multiply each op).
-    - Camera and image plane:
-      - Camera is at `(0,0,distance)`, looking toward `-Z`, up `(0,1,0)`.
-      - Vertical FOV determines plane size: `halfHeight = distance * tan(vFOV/2)`, `width = height * aspect`.
-      - For pixel (x,y), map to camera-space ray direction `(u, v, -distance)`, then normalized.
-    - **Acceleration Structure (BVH)**:
-      - Before rendering, a **Bounding Volume Hierarchy (BVH)** is built from all scene objects.
-      - This replaces the $O(N)$ linear search with an $O(\log N)$ hierarchical traversal.
-      - The `BuildBVH` method converts `ObjectData` into a tree of `BVHNode`s containing `IHittable` objects (`SphereInstance`, `BoxInstance`, `TriangleInstance`).
-    - Intersections:
-      - All intersections are handled via the `IHittable` interface and the BVH tree.
-      - `SphereInstance`: Handles object-space intersection for unit spheres using quadratic solution with epsilon checks.
-      - `BoxInstance`: Handles object-space intersection for unit cubes using the Slabs algorithm with epsilon checks.
-      - `TriangleInstance`: Handles world-space intersection for triangles using barycentric coordinates with watertightness checks (epsilon).
-    - Shading (simple): ambient + diffuse (Lambert) + specular (Blinn–Phong). No shadows yet.
-    - Output: returns `Texture2D`. Helper saves PNG via `RayTracer.SaveTexture()`.
-    - Targeted debug logs for camera matrix, center-pixel ray, sample object positions, and closest hit distances by type.
+- `Assets/Services/RayTracer.cs` ⭐ **GPU Ray Tracer**
+  - **GPU-accelerated ray tracer** using Unity Compute Shaders
+  - Key responsibilities:
+    - Setup GPU buffers (BVH nodes, triangles, materials)
+    - Configure shader uniforms (camera, lighting, toggles)
+    - Dispatch compute shader and read back results
+  - `RenderAsync(scene, settings, progress, token)`: Main async render method
+  - `SetComputeShader(shader)`: Assigns the compute shader at runtime
+  - `RebuildBVH(scene, sceneMat)`: Triggers BVH rebuild with camera transform
+  - `SetupMaterialBuffer(scene, kernel)`: Uploads material data to GPU
 
-- `Assets/Services/BVH/`
-  - Contains the core components for the Bounding Volume Hierarchy system.
-  - `AABB.cs`: Defines the Axis-Aligned Bounding Box struct with efficient ray-box intersection logic.
-  - `IHittable.cs`: Interface for all objects that can be hit by a ray (`Hit` method and `GetBoundingBox`).
-  - `BVHNode.cs`: Represents a node in the BVH tree. It recursively splits objects (currently random axis split) to build the hierarchy and traverses children during intersection.
-  - `HittableObjects.cs`: Wrappers for scene primitives (`SphereInstance`, `BoxInstance`, `TriangleInstance`) that implement `IHittable`.
+- `Assets/Services/SceneGeometryConverter.cs`
+  - Converts scene primitives to GPU-compatible triangle format
+  - `ExtractTriangles(scene, sceneMat)`: Returns `List<GPUTriangle>` in camera space
+  - Handles spheres (tessellated UV sphere, 24×16 resolution with **smooth vertex normals**)
+  - Handles boxes (6 faces, 12 triangles)
+  - Handles triangle meshes from scene data
+
+- `Assets/Services/GifGenerator.cs`
+  - Generates 360° rotation GIF animations
+  - `GenerateRotationFrames(settings, progress, token)`: Renders 36 frames (10° increments)
+  - `SaveGifAsync(frames, path, progress, delay)`: **Parallel LZW compression** for fast encoding
+  - Uses multi-threaded pixel conversion and compression
+
+### BVH System
+
+- `Assets/Services/BVH/BVHBuilder.cs`
+  - **GPU BVH Data Structures**:
+    - `GPUTriangle`: v0, v1, v2, n0, n1, n2 (vertex normals for smooth shading), center, materialIndex (88 bytes)
+    - `GPUBVHNode`: AABB min/max, leftOrFirst, count (32 bytes, cache-aligned)
+    - `GPUMaterial`: color, ambient, diffuse, specular, refraction, ior (32 bytes)
+  - `Build(triangles)`: Constructs flattened BVH from triangle list
+  - Uses median split on random axis for balanced tree
+
+- `Assets/Services/BVH/` (Legacy CPU components, retained for reference)
+  - `AABB.cs`, `IHittable.cs`, `BVHNode.cs`, `HittableObjects.cs`
+
+### Shaders
+
+- `Assets/Shaders/BVHRayTracing.compute` ⭐ **Main Compute Shader**
+  - **Kernel**: `CSMain` (8×8 thread groups)
+  - **Features**:
+    - Iterative BVH traversal (stack-based, max depth 64)
+    - Möller-Trumbore triangle intersection
+    - **Smooth normal interpolation** using barycentric coordinates
+    - **Shadow rays** with epsilon bias (1e-2) for acne prevention
+    - **Recursive reflections** (specular materials)
+    - **Recursive refractions** with Snell's law and total internal reflection
+    - **Blinn-Phong specular highlights**
+    - Perspective and **orthographic** projection modes
+    - Debug visualization modes (depth, normals, hit/miss)
+  - **Uniforms**:
+    - `_CameraDistance`, `_CameraFOV`, `_CameraToWorld`, `_CameraInverseProjection`
+    - `_MaxDepth`, `_DebugMode`
+    - `_EnableAmbient`, `_EnableDiffuse`, `_EnableSpecular`, `_EnableRefraction`
+    - `_LightIntensity`, `_LightPosition`
+    - `_BackgroundColor`
+    - `_IsOrthographic`, `_OrthoSize`
+
+### UI
 
 - `Assets/SceneBuilder.cs`
-  - Entry point MonoBehaviour for running the pipeline.
-  - On Start:
-    - Loads scene via `SceneService.LoadScene()`.
-    - Logs a summary of parsed content.
-    - Calls `RayTracer.Render(scene)` and saves to `Assets/Output/render.png`.
-    - If a `UIDocument` exists, displays the rendered texture on a VisualElement named `ray-traced-image`.
-  - Note: Previously instantiated Unity primitives; now switched to purely ray-traced image output.
+  - Main MonoBehaviour entry point
+  - Wires UI controls to `RenderSettings`
+  - Handles scene loading, render triggering, and GIF generation
+  - Manages progress bar and elapsed time display
 
-## Scene File Semantics (from spec and sample)
+- `Assets/GUIs/gui_raytracing.uxml`
+  - UI Toolkit layout with controls for all render settings
 
-- Segment order is arbitrary.
-- First index = 0 for materials and transformations.
-- Triangle front faces are defined with CCW vertex order.
-- Camera semantic: The spec states the camera transform affects the scene (the scene is positioned relative to a static camera located at `(0,0,distance)` facing `-Z`).
+## Rendering Pipeline
 
-## Current Assumptions and Open Questions
+### 1. Scene Loading
+```
+SceneService.LoadScene() → ObjectData
+```
 
-- Camera transform usage:
-  - We currently compute `sceneMat` from the camera composite (direct). Depending on the exact convention, the inverse may be required (i.e., placing the scene differently relative to the camera). Logging is in place to validate which interpretation puts geometry in front of the camera.
-- Triangle intersection is performed in world-space (robust with non-uniform transforms). Sphere/box use object-space intersections.
-- Materials: Only ambient/diffuse/specular used for lighting; refraction and ior are parsed but not yet used.
-- Lights: Each `Light` uses its transform index; only point-light style diffuse/specular is used (no attenuation yet).
+### 2. Geometry Preparation (CPU)
+```
+SceneGeometryConverter.ExtractTriangles(scene, cameraMatrix)
+  ├── Transform all geometry into camera space
+  ├── Tessellate spheres with smooth vertex normals
+  ├── Convert boxes to triangles
+  └── Return List<GPUTriangle>
+```
 
-## Debugging Aids
+### 3. BVH Construction (CPU)
+```
+BVHBuilder.Build(triangles)
+  ├── Sort by center position
+  ├── Recursive median split
+  └── Return flattened node array + triangle array
+```
 
-- On render start, logs:
-  - Camera transform index, distance, FOV.
-  - Camera/scene matrix.
-  - Sample object placements (Sphere[0], Box[0] centers).
-  - Transformed z-values for the first triangle of the first mesh.
-  - Center pixel ray and closest hit distances per type.
-- These help decide whether to apply the camera composite directly or inversely and verify frustum coverage.
+### 4. GPU Upload
+```
+RayTracer.RebuildBVH()
+  ├── ComputeBuffer bvhBuffer (32 bytes/node)
+  ├── ComputeBuffer triangleBuffer (88 bytes/tri)
+  └── ComputeBuffer materialBuffer (32 bytes/mat)
+```
 
-## Constraints and Practices
+### 5. Ray Tracing (GPU)
+```
+BVHRayTracing.compute CSMain
+  ├── Generate ray (perspective or orthographic)
+  ├── For each depth level:
+  │   ├── Traverse BVH iteratively
+  │   ├── Find closest intersection
+  │   ├── Calculate local shading (ambient + diffuse + specular)
+  │   ├── Cast shadow ray
+  │   └── Spawn reflection/refraction ray
+  └── Write final color to RenderTexture
+```
 
-- Do not instantiate Unity primitives for final output; the project’s goal is to ray trace pixels.
-- Keep scene parsing resilient to arbitrary segment order; tolerate empty transformations.
-- Use Unity types (`Color`, `Vector3`, `Matrix4x4`, `Texture2D`) for convenience, but perform the rendering in CPU code.
-- Keep logs concise and targeted to avoid console spam.
+### 6. Readback (CPU)
+```
+Texture2D.ReadPixels() → Display in UI / Save to file
+```
 
-## Known Issues / Next Steps
+## Key Features
 
-- Determine the correct global camera transform usage (direct vs. inverse) based on frustum checks; the current code includes diagnostics to guide this.
-- **[COMPLETED]** Add hard shadows: cast shadow rays toward each light and test for occlusion.
-  - Implemented in `RayTracer.cs`.
-  - Uses `Hit(shadowRay)` with epsilon `1e-3f` for acne prevention.
-  - Checks if distance to intersection is less than distance to light.
-- Add support for multiple lights with attenuation.
-- **[COMPLETED]** Implement reflection (recursive specular reflection).
-  - Implemented in `RayTracer.cs` (Stage 6).
-  - Recursively traces rays for materials with `specularCoefficient > 0`.
-  - Calculates reflection vector `R = V + 2N * cosTheta`.
-  - Uses recursion depth limit and epsilon offset for acne prevention.
-- **[COMPLETED]** Implement refraction (recursive refraction).
-  - Implemented in `RayTracer.cs` (Stage 7).
-  - Handles Entering/Exiting logic using Snell's Law.
-  - Handles Total Internal Reflection (TIR).
-  - Uses recursion depth limit and epsilon offset.
-- **[COMPLETED]** UI Integration (Stage 8).
-  - Wired up `gui_raytracing.uxml` controls to `RayTracer` via `RenderSettings` struct.
-  - **Resolution**: X/Y override from text fields.
-  - **Background Color**: RGB sliders (0-100) synced with RGB text fields (0-255).
-  - **Light Intensity**: Slider + text field synced (default 1.0).
-  - **Lighting Toggles**: Ambient, Diffuse, Specular (reflection), Refraction enable/disable.
-  - **Camera Position**: X/Y/Z text fields for camera override.
-  - **Camera Rotation**: X/Y/Z sliders (0-100 mapped to 0-360 degrees).
-  - **Camera FOV**: Text field for FOV override.
-  - **Recursion Depth**: Text field for max recursion.
-  - **Priority Logic**: Scene file values populate UI on load; UI values override at render time.
-- **[COMPLETED]** Acceleration structures (BVH) for large triangle meshes.
-- **[COMPLETED]** Rigorous intersection logic (Barycentric, Quadratic, Slabs) with epsilon for precision.
-- **[COMPLETED]** Geometric transformations (World/Object space conversions) for rays and normals.
-- Tone mapping / gamma correction if needed.
+### Lighting Model
+- ✅ **Ambient reflection**: `color * kAmbient`
+- ✅ **Diffuse reflection**: Lambert model with shadow testing
+- ✅ **Specular highlights**: Blinn-Phong model
+- ✅ **Shadows**: Shadow rays with epsilon bias to prevent self-shadowing
+- ✅ **Recursive reflections**: Mirror-like reflections for specular materials
+- ✅ **Recursive refractions**: Snell's law with IOR, handles total internal reflection
 
-## Quick Start (Runtime)
+### Projection Modes
+- ✅ **Perspective**: Standard pinhole camera model
+- ✅ **Orthographic**: Parallel rays, constant viewing direction
 
-1. Place a scene file at `Assets/Resources/Scenes/test_scene_1.txt` (sample is present).
-2. Add `SceneBuilder` to a GameObject in a scene and press Play.
-3. Inspect Unity Console for [RT] logs.
-4. Find the rendered image at `Assets/Output/render.png`.
-5. Optional: Add a `UIDocument` with a VisualElement named `ray-traced-image` to see the texture in Play Mode directly.
+### Smooth Shading
+- Spheres use **per-vertex normals** (vertex position normalized)
+- Triangle intersection **interpolates normals** using barycentric coordinates
+- Proper normal transformation for non-uniform scaling: `(M⁻¹)ᵀ * n`
 
-## Acceleration Structure Implementation (BVH)
+### Performance Optimizations
+- **GPU Compute Shader**: Massively parallel ray tracing
+- **BVH Acceleration**: O(log N) intersection vs O(N) linear search
+- **Cache-aligned structs**: 32-byte GPU nodes for optimal memory access
+- **Parallel GIF encoding**: Multi-threaded LZW compression
 
-To optimize rendering performance, especially for scenes with many triangles, a Bounding Volume Hierarchy (BVH) is implemented.
+### UI Controls
+- Resolution (X, Y)
+- Background Color (RGB sliders)
+- Light Intensity (0-5 scale)
+- Lighting Toggles (Ambient, Diffuse, Specular, Refraction)
+- Camera Position (X, Y, Z)
+- Camera Rotation (X, Y, Z sliders, 0-360°)
+- Camera FOV (default 50°)
+- Recursion Depth
+- Orthographic projection toggle
+- Progress bar with elapsed time
 
-1.  **Primitives Wrapper**:
-    - Raw data (`SphereDescription`, `BoxDescription`, `Triangle`) is wrapped into `SphereInstance`, `BoxInstance`, and `TriangleInstance`.
-    - These classes implement `IHittable` and handle their own AABB calculation and intersection logic.
-    - `SphereInstance` and `BoxInstance` store the inverse transformation matrix to perform intersection in object space (unit sphere/box), then transform the hit point and normal back to world space.
-    - **Intersection Logic**:
-        - **Triangles**: Uses barycentric coordinates ($\alpha, \beta, \gamma$) with $\epsilon = 1e-6$ to ensure watertightness ($\beta > -\epsilon, \gamma > -\epsilon, \beta+\gamma < 1+\epsilon$). Interpolates vertex positions for $P'$.
-        - **Spheres**: Solves quadratic equation, selecting the closest positive root $> \epsilon$.
-        - **Boxes**: Uses Slabs algorithm (axis-aligned planes) with $\epsilon$ checks.
-    - **Transformations**:
-        - Ray transformed to object space via $T^{-1}$.
-        - $t$ distance calculated in world space to preserve depth ordering.
-        - Normals transformed to world space via $(T^{-1})^T$.
+## Scene File Format
 
-2.  **Hierarchy Construction (`BVHNode`)**:
-    - The tree is built recursively top-down.
-    - At each node, the list of objects is split into two children (`left` and `right`).
-    - **Splitting Strategy**: Currently, a random axis (X, Y, or Z) is chosen. The objects are sorted by their bounding box minimum coordinate along that axis, and the list is split in half (median split).
-    - Leaf nodes contain 1 or 2 objects.
-    - Each node stores an `AABB` that encapsulates all its children.
+```
+Image { width height; r g b }
+Transformation { T x y z | Rx angle | Ry angle | Rz angle | S x y z ... }
+Camera { transformIndex; distance; fov }
+Light { transformIndex; r g b }
+Material { r g b; ambient diffuse specular refraction ior }
+Triangles { transformIndex; [materialIndex; v0x v0y v0z; v1x v1y v1z; v2x v2y v2z]... }
+Sphere { transformIndex; materialIndex }
+Box { transformIndex; materialIndex }
+```
 
-3.  **Traversal**:
-    - The `Hit` method checks intersection with the node's AABB first.
-    - If the box is hit, it recursively checks `left` and `right` children.
-    - It returns the closest hit (smallest `t`) among children.
+- Segment order is arbitrary
+- Indices are 0-based
+- Triangle winding is CCW for front faces
+- Colors are 0-1 range
 
-## Design Decisions Summary
+## Quick Start
 
-- Models mirror the exact scene specification and are serializable.
-- Parser populates a single `ObjectData` root representing the entire scene.
-- Ray tracer operates in world space with explicit transforms; triangles are intersected in WS for safety under non-uniform transforms.
-- **BVH Integration**: The ray tracer now builds a BVH tree before rendering. This abstracts the intersection logic behind the `IHittable` interface, allowing the main loop to simply call `root.Hit()`. This significantly improves performance for scenes with many objects.
-- No Unity primitives are used in the final pipeline—only a generated image.
+1. Open the Unity project
+2. Enter Play Mode
+3. Click **Load Data** to parse a scene file
+4. Adjust settings in the UI panel
+5. Click **Start Ray Tracing** to render
+6. View the result in the preview panel
+7. Find saved images in `Assets/Output/`
+
+### GIF Generation
+1. Configure desired settings
+2. Click the **GIF** button in the menu bar
+3. Wait for 36 frames to render and encode
+4. GIF is saved to `Assets/Output/rotation_[timestamp].gif`
+
+## Dependencies
+
+- **Unity 2021+** with Compute Shader support
+- **UI Toolkit** for the interface
+- No external packages required

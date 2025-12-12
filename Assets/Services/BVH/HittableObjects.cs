@@ -89,7 +89,7 @@ public class SphereInstance : IHittable
         float t0 = (-b - s) / (2f * a);
         float t1 = (-b + s) / (2f * a);
         
-        const float kEpsilon = 1e-6f;
+        const float kEpsilon = 1e-3f;
         
         if (t0 > kEpsilon) t = t0;
         else t = t1;
@@ -166,7 +166,7 @@ public class BoxInstance : IHittable
         float tmin = -1e20f, tmax = 1e20f;
         Vector3 nmin = Vector3.zero, nmax = Vector3.zero;
         
-        const float kEpsilon = 1e-6f;
+        const float kEpsilon = 1e-3f;
 
         for (int axis = 0; axis < 3; axis++)
         {
@@ -243,7 +243,7 @@ public class TriangleInstance : IHittable
     private bool IntersectTriangleWS(Ray r, Vector3 aWS, Vector3 bWS, Vector3 cWS, out float t, out Vector3 bary)
     {
         t = 0f; bary = Vector3.zero;
-        const float kEpsilon = 1e-6f;
+        const float kEpsilon = 1e-3f;
 
         Vector3 e1 = bWS - aWS;
         Vector3 e2 = cWS - aWS;
