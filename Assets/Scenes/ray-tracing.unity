@@ -321,6 +321,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   baseMaterial: {fileID: 0}
+  rayTracingShader: {fileID: 7200000, guid: 479c34b479d5696408c4bf4ed8da0749, type: 3}
 --- !u!4 &1308925129
 Transform:
   m_ObjectHideFlags: 0

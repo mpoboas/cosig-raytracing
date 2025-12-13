@@ -1,0 +1,375 @@
+/* ========================================
+   COSIG Ray Tracing - Dark Theme
+   Based on reference design
+   ======================================== */
+
+/* === Global Font === */
+.unity-text-element {
+    -unity-font-definition: url('fonts/SpaceGrotesk-Regular.ttf');
+}
+
+.unity-label {
+    -unity-font-definition: url('fonts/SpaceGrotesk-Medium.ttf');
+}
+
+.unity-button {
+    -unity-font-definition: url('fonts/SpaceGrotesk-Medium.ttf');
+}
+
+.unity-text-field__input {
+    -unity-font-definition: url('fonts/SpaceGrotesk-Regular.ttf');
+}
+
+/* === Tab View Styling === */
+.unity-tab-view {
+    background-color: transparent;
+}
+
+.unity-tab-view__content-container {
+    background-color: transparent;
+    flex-direction: row;
+}
+
+/* Tab Header/Button - This is the "Global" tab issue */
+.unity-tab__header {
+    background-color: #2a2f3a;
+    border-width: 0;
+    border-radius: 4px;
+    padding: 6px 16px;
+    margin: 0 4px;
+}
+
+.unity-tab__header:hover {
+    background-color: #353a48;
+}
+
+.unity-tab__header:checked {
+    background-color: #3a4050;
+    border-bottom-width: 2px;
+    border-bottom-color: #4a8fd9;
+}
+
+.unity-tab__header-label {
+    color: #9aa0a6;
+    font-size: 12px;
+}
+
+.unity-tab__header:checked .unity-tab__header-label {
+    color: #e8eaed;
+}
+
+/* Tab Header Underline (remove default styling) */
+.unity-tab__header-underline {
+    display: none;
+}
+
+/* Remove focus ring on tabs */
+.unity-tab__header:focus {
+    border-width: 0;
+}
+
+.unity-tab__header:focus > .unity-tab__header-label {
+    color: #e8eaed;
+}
+
+/* Tab content area */
+#Global {
+    background-color: transparent;
+}
+
+/* === Text Fields === */
+.unity-text-field {
+    margin: 2px 0;
+}
+
+.unity-text-field__input {
+    background-color: #1e222a;
+    border-color: #3a3f4a;
+    border-width: 1px;
+    border-radius: 4px;
+    color: #e8eaed;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.unity-text-field__input:focus {
+    border-color: #4a8fd9;
+}
+
+.unity-text-field > .unity-label {
+    color: #9aa0a6;
+    font-size: 11px;
+    min-width: 30px;
+    padding-right: 4px;
+}
+
+/* === Sliders === */
+.unity-slider {
+    margin: 2px 0;
+    min-height: 22px;
+}
+
+.unity-base-slider__tracker {
+    background-color: #1e222a;
+    border-width: 0;
+    border-radius: 4px;
+    height: 8px;
+    margin-top: 0;
+}
+
+.unity-base-slider__dragger {
+    background-color: #4a8fd9;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    margin-top: -4px;
+    border-width: 0;
+}
+
+.unity-base-slider__dragger:hover {
+    background-color: #5a9fe9;
+}
+
+.unity-base-slider__drag-container {
+    min-height: 16px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.unity-base-slider__input {
+    min-height: 22px;
+    flex-direction: row;
+    align-items: center;
+}
+
+/* === Toggle / Checkbox === */
+.unity-toggle {
+    margin: 4px 0;
+}
+
+.unity-toggle__input {
+    flex-direction: row;
+}
+
+.unity-toggle__checkmark {
+    background-color: #1e222a;
+    border-color: #3a3f4a;
+    border-width: 1px;
+    border-radius: 3px;
+    width: 16px;
+    height: 16px;
+    -unity-background-image-tint-color: transparent;
+}
+
+.unity-toggle:checked .unity-toggle__checkmark {
+    background-color: #4a8fd9;
+    border-color: #4a8fd9;
+    -unity-background-image-tint-color: white;
+}
+
+.unity-toggle > .unity-label {
+    color: #9aa0a6;
+    font-size: 11px;
+}
+
+/* === Buttons === */
+.unity-button {
+    background-color: #2a2f3a;
+    border-color: #3a3f4a;
+    border-width: 1px;
+    border-radius: 5px;
+    color: #e8eaed;
+    padding: 8px 16px;
+    font-size: 12px;
+    -unity-font-style: normal;
+}
+
+.unity-button:hover {
+    background-color: #353a48;
+    border-color: #4a8fd9;
+}
+
+.unity-button:active {
+    background-color: #4a8fd9;
+    color: white;
+}
+
+/* Primary Button (Start Ray Tracing) */
+#btn-start-raytracing {
+    background-color: #e85c2c;
+    border-color: #e85c2c;
+    color: white;
+    -unity-font-style: bold;
+}
+
+#btn-start-raytracing:hover {
+    background-color: #f06c3c;
+    border-color: #f06c3c;
+}
+
+#btn-start-raytracing:active {
+    background-color: #d04c1c;
+}
+
+/* === Progress Bar === */
+.unity-progress-bar {
+    height: 24px;
+    margin: 4px 0;
+}
+
+.unity-progress-bar__background {
+    background-color: #1e222a;
+    border-color: #4a8fd9;
+    border-width: 2px;
+    border-radius: 12px;
+}
+
+.unity-progress-bar__progress {
+    background-color: #4a8fd9;
+    border-radius: 10px;
+    margin: 2px;
+}
+
+.unity-progress-bar__title {
+    color: #e8eaed;
+    font-size: 11px;
+    -unity-text-align: middle-center;
+}
+
+/* === Labels === */
+.unity-label {
+    color: #9aa0a6;
+    font-size: 11px;
+}
+
+/* Section Headers */
+#Image > Label:first-child,
+#Lighting > Label:first-child,
+#Camera > Label:first-child,
+#Renderer > Label:first-child {
+    color: #e8eaed;
+    font-size: 12px;
+    -unity-font-style: bold;
+    margin-bottom: 8px;
+}
+
+/* === Scroller === */
+.unity-scroller {
+    background-color: #242830;
+}
+
+.unity-scroller__low-button,
+.unity-scroller__high-button {
+    background-color: #2a2f3a;
+    border-width: 0;
+}
+
+.unity-scroller .unity-base-slider__dragger {
+    background-color: #4a8fd9;
+    border-radius: 4px;
+}
+
+/* === Menu Bar Buttons === */
+#gif, #about {
+    background-color: transparent;
+    border-width: 0;
+    color: #9aa0a6;
+    padding: 6px 12px;
+}
+
+#gif:hover, #about:hover {
+    color: #e8eaed;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* === Orthographic Button === */
+#cam_orto {
+    background-color: #2a2f3a;
+    border-color: #3a3f4a;
+    border-width: 1px;
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    padding: 2px;
+}
+
+#cam_orto:hover {
+    border-color: #4a8fd9;
+}
+
+/* === Control Panels === */
+.controlos-frame {
+    background-color: #2a2f3a;
+    border-color: #3a3f4a;
+    border-width: 1px;
+    border-radius: 4px;
+}
+
+#Image, #Lighting, #Camera, #Renderer {
+    background-color: #2a2f3a;
+}
+
+/* === Elapsed Time Label === */
+#lbl-elapsed-time {
+    color: #9aa0a6;
+    font-size: 12px;
+}
+
+#lbl-progress-text {
+    color: #9aa0a6;
+    font-size: 11px;
+}
+
+/* === Main Background === */
+#Mega_Pai {
+    background-color: #1e222a;
+}
+
+/* === Action Buttons Row === */
+#btn-load-data, #btn-save-image {
+    background-color: #2a2f3a;
+}
+
+/* === Sub-section labels === */
+#Resolution > Label,
+#BG_Color > Label,
+#RGB > Label,
+#Axis_Rotation > Label,
+#Pos > Label {
+    color: #6b7280;
+    font-size: 10px;
+}
+
+/* === Existing class styles === */
+.a-label-esta-com-a-min-width-e-nao-devia-estar > .unity-label {
+    min-width: 20px;
+}
+
+.label-left-padding > .unity-label {
+    padding-left: 5px;
+}
+
+.linha-1-height {
+    min-height: 230px;
+    max-height: 250px;
+}
+
+.linha-2-height {
+    min-height: 100px;
+    max-height: 120px;
+}
+
+.controls-height {
+    min-height: 340px;
+    max-height: 380px;
+}
+
+.button {
+    width: 15%;
+    height: 70%;
+}
+
+#unity-tab__content-container {
+    flex-direction: row;
+    width: 100%;
+}

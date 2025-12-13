@@ -83,6 +83,10 @@ public class SceneBuilder : MonoBehaviour
         var btnExit = root.Q<Button>("btn-exit");
         if (btnExit != null) btnExit.clicked += OnExitClicked;
 
+        // Load Image Button
+        var btnLoadImage = root.Q<Button>("btn-load-image");
+        if (btnLoadImage != null) btnLoadImage.clicked += OnLoadImageClicked;
+
         // Orthographic Projection Button
         btnOrthographic = root.Q<Button>("cam_orto");
         if (btnOrthographic != null) btnOrthographic.clicked += OnOrthographicClicked;
@@ -90,6 +94,10 @@ public class SceneBuilder : MonoBehaviour
         // GIF Generator Button
         var btnGif = root.Q<Button>("gif");
         if (btnGif != null) btnGif.clicked += OnGifClicked;
+
+        // About Button
+        var btnAbout = root.Q<Button>("about");
+        if (btnAbout != null) btnAbout.clicked += OnAboutClicked;
 
         lblElapsedTime = root.Q<Label>("lbl-elapsed-time");
         progressBar = root.Q<ProgressBar>("progress-bar");
@@ -556,26 +564,71 @@ public class SceneBuilder : MonoBehaviour
 #endif
     }
 
-    void OnSaveImageClicked()
+    async void OnSaveImageClicked()
     {
-        if (lastRenderedTexture == null)
+        if (lastRenderedTexture == null && (gifFrames == null || gifFrames.Count == 0))
         {
             Debug.LogWarning("No image to save. Render a scene first.");
             StartCoroutine(ShowToast("No image to save!"));
             return;
         }
 
-        // Save to Output folder
-        string fileName = $"render_{System.DateTime.Now:yyyyMMdd_HHmmss}.png";
-        string outPath = Path.Combine("Assets/Output", fileName);
-        
-        RayTracer.SaveTexture(lastRenderedTexture, outPath);
-        
-        Debug.Log($"Saved image to {outPath}");
-        StartCoroutine(ShowToast($"Image saved to {fileName}"));
-        
 #if UNITY_EDITOR
-        AssetDatabase.Refresh(); // Refresh assets to show the new file
+        // Determine if we have GIF frames or just a single image
+        bool hasGifFrames = gifFrames != null && gifFrames.Count > 1;
+        
+        string defaultName = hasGifFrames 
+            ? $"animation_{System.DateTime.Now:yyyyMMdd_HHmmss}" 
+            : $"render_{System.DateTime.Now:yyyyMMdd_HHmmss}";
+        
+        string filter = hasGifFrames ? "GIF file;*.gif;PNG file;*.png" : "PNG file;*.png;GIF file;*.gif";
+        
+        string path = EditorUtility.SaveFilePanel(
+            "Save Image",
+            "Assets/Output",
+            defaultName,
+            hasGifFrames ? "gif" : "png"
+        );
+        
+        if (!string.IsNullOrEmpty(path))
+        {
+            string extension = Path.GetExtension(path).ToLower();
+            
+            if (extension == ".gif" && hasGifFrames)
+            {
+                // Save as GIF
+                var gifGen = new GifGenerator(rayTracer, scene);
+                
+                await gifGen.SaveGifAsync(gifFrames, path, 
+                    (progress, status) =>
+                    {
+                        if (progressBar != null) progressBar.value = progress * 100f;
+                        if (lblProgressText != null) lblProgressText.text = status;
+                    }, 
+                    15); // 15 centiseconds per frame
+                
+                StartCoroutine(ShowToast($"GIF saved: {Path.GetFileName(path)}"));
+                Debug.Log($"[SceneBuilder] Saved GIF to {path}");
+            }
+            else
+            {
+                // Save as PNG (single frame)
+                Texture2D texToSave = lastRenderedTexture ?? (gifFrames?.Count > 0 ? gifFrames[0] : null);
+                if (texToSave != null)
+                {
+                    // Ensure it ends with .png
+                    if (extension != ".png")
+                        path = Path.ChangeExtension(path, ".png");
+                    
+                    RayTracer.SaveTexture(texToSave, path);
+                    StartCoroutine(ShowToast($"Image saved: {Path.GetFileName(path)}"));
+                    Debug.Log($"[SceneBuilder] Saved image to {path}");
+                }
+            }
+        }
+#else
+        Debug.LogWarning("File dialog is only supported in the Unity Editor.");
+        StartCoroutine(ShowToast("File dialog not supported in build."));
 #endif
     }
 
@@ -599,6 +652,117 @@ public class SceneBuilder : MonoBehaviour
         }
         
         Debug.Log($"[SceneBuilder] Orthographic Projection: {(isOrthographicMode ? "ON" : "OFF")}");
+    }
+
+    void OnAboutClicked()
+    {
+        var root = uiDocument.rootVisualElement;
+        
+        // Check if popup already exists
+        var existingPopup = root.Q<VisualElement>("about-popup");
+        if (existingPopup != null)
+        {
+            root.Remove(existingPopup);
+            return;
+        }
+        
+        // Create overlay background
+        var overlay = new VisualElement();
+        overlay.name = "about-popup";
+        overlay.style.position = Position.Absolute;
+        overlay.style.left = 0;
+        overlay.style.right = 0;
+        overlay.style.top = 0;
+        overlay.style.bottom = 0;
+        overlay.style.backgroundColor = new StyleColor(new Color(0, 0, 0, 0.7f));
+        overlay.style.justifyContent = Justify.Center;
+        overlay.style.alignItems = Align.Center;
+        
+        // Create popup card
+        var popup = new VisualElement();
+        popup.style.backgroundColor = new StyleColor(new Color(0.16f, 0.18f, 0.22f));
+        popup.style.borderTopLeftRadius = 12;
+        popup.style.borderTopRightRadius = 12;
+        popup.style.borderBottomLeftRadius = 12;
+        popup.style.borderBottomRightRadius = 12;
+        popup.style.paddingTop = 30;
+        popup.style.paddingBottom = 30;
+        popup.style.paddingLeft = 40;
+        popup.style.paddingRight = 40;
+        popup.style.alignItems = Align.Center;
+        popup.style.minWidth = 300;
+        
+        // Title
+        var title = new Label("COSIG Ray Tracer");
+        title.style.fontSize = 24;
+        title.style.color = new StyleColor(new Color(0.9f, 0.9f, 0.95f));
+        title.style.marginBottom = 20;
+        title.style.unityFontStyleAndWeight = FontStyle.Bold;
+        popup.Add(title);
+        
+        // Subtitle
+        var subtitle = new Label("GPU-Accelerated BVH Ray Tracing");
+        subtitle.style.fontSize = 12;
+        subtitle.style.color = new StyleColor(new Color(0.6f, 0.65f, 0.7f));
+        subtitle.style.marginBottom = 25;
+        popup.Add(subtitle);
+        
+        // Developers label
+        var devLabel = new Label("Developed by");
+        devLabel.style.fontSize = 11;
+        devLabel.style.color = new StyleColor(new Color(0.5f, 0.55f, 0.6f));
+        devLabel.style.marginBottom = 10;
+        popup.Add(devLabel);
+        
+        // Developer names
+        var dev1 = new Label("1201716 - Miguel Póvoas");
+        dev1.style.fontSize = 16;
+        dev1.style.color = new StyleColor(new Color(0.29f, 0.56f, 0.85f));
+        dev1.style.marginBottom = 5;
+        popup.Add(dev1);
+        
+        var dev2 = new Label("1211008 - Guilherme Melo");
+        dev2.style.fontSize = 16;
+        dev2.style.color = new StyleColor(new Color(0.29f, 0.56f, 0.85f));
+        dev2.style.marginBottom = 25;
+        popup.Add(dev2);
+        
+        // Year
+        var year = new Label("© 2025 ISEP");
+        year.style.fontSize = 10;
+        year.style.color = new StyleColor(new Color(0.4f, 0.45f, 0.5f));
+        year.style.marginBottom = 20;
+        popup.Add(year);
+        
+        // Close button
+        var closeBtn = new Button(() => root.Remove(overlay));
+        closeBtn.text = "Close";
+        closeBtn.style.backgroundColor = new StyleColor(new Color(0.29f, 0.56f, 0.85f));
+        closeBtn.style.color = Color.white;
+        closeBtn.style.borderTopWidth = 0;
+        closeBtn.style.borderBottomWidth = 0;
+        closeBtn.style.borderLeftWidth = 0;
+        closeBtn.style.borderRightWidth = 0;
+        closeBtn.style.borderTopLeftRadius = 6;
+        closeBtn.style.borderTopRightRadius = 6;
+        closeBtn.style.borderBottomLeftRadius = 6;
+        closeBtn.style.borderBottomRightRadius = 6;
+        closeBtn.style.paddingTop = 10;
+        closeBtn.style.paddingBottom = 10;
+        closeBtn.style.paddingLeft = 30;
+        closeBtn.style.paddingRight = 30;
+        popup.Add(closeBtn);
+        
+        overlay.Add(popup);
+        
+        // Close when clicking overlay background
+        overlay.RegisterCallback<ClickEvent>(evt => 
+        {
+            if (evt.target == overlay)
+                root.Remove(overlay);
+        });
+        
+        root.Add(overlay);
     }
 
     async void OnGifClicked()
@@ -649,39 +813,17 @@ public class SceneBuilder : MonoBehaviour
             stopwatch.Stop();
             
             if (frames.Count > 0)
-        {
-            // Save GIF with progress reporting
-            string timestamp = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string gifPath = $"Assets/Output/rotation_{timestamp}.gif";
-            
-            // Ensure output directory exists
-            if (!Directory.Exists("Assets/Output"))
             {
-                Directory.CreateDirectory("Assets/Output");
-            }
-            
-            // Use async version with progress for encoding phase
-            await gifGen.SaveGifAsync(frames, gifPath, 
-                (progress, status) =>
-                {
-                    if (progressBar != null) progressBar.value = progress * 100f;
-                    if (lblProgressText != null) lblProgressText.text = status;
-                }, 
-                15); // 15 centiseconds per frame = ~6.7 fps
+                // Store frames for later saving (user will click Save Image)
+                gifFrames = frames;
+                lastRenderedTexture = frames[0];
+                DisplayTexture(lastRenderedTexture);
                 
-                // Display the last frame (or first frame)
-                if (frames.Count > 0)
-                {
-                    gifFrames = frames;
-                    lastRenderedTexture = frames[0];
-                    DisplayTexture(lastRenderedTexture);
-                    
-                    // Start playback
-                    if (gifPlaybackCoroutine != null) StopCoroutine(gifPlaybackCoroutine);
-                    gifPlaybackCoroutine = StartCoroutine(PlayGifLoop(0.15f)); // 15cs delay
-                }
+                // Start playback
+                if (gifPlaybackCoroutine != null) StopCoroutine(gifPlaybackCoroutine);
+                gifPlaybackCoroutine = StartCoroutine(PlayGifLoop(0.15f)); // 15cs delay
                 
-                StartCoroutine(ShowToast($"GIF saved! {frames.Count} frames - {gifPath}"));
+                StartCoroutine(ShowToast($"GIF ready! {frames.Count} frames."));
                 Debug.Log($"[SceneBuilder] GIF generated: {frames.Count} frames in {stopwatch.Elapsed.TotalSeconds:F2}s");
                 
                 if (lblElapsedTime != null)
@@ -717,6 +859,71 @@ public class SceneBuilder : MonoBehaviour
 #endif
     }
 
+    void OnLoadImageClicked()
+    {
+#if UNITY_EDITOR
+        string path = EditorUtility.OpenFilePanel("Load Image", "", "png,jpg,jpeg");
+        if (!string.IsNullOrEmpty(path))
+        {
+            // Load the image from disk
+            byte[] fileData = File.ReadAllBytes(path);
+            Texture2D tex = new Texture2D(2, 2);
+            if (tex.LoadImage(fileData))
+            {
+                Display3DTexture(tex);
+                StartCoroutine(ShowToast($"Loaded: {Path.GetFileName(path)}"));
+                Debug.Log($"[SceneBuilder] Loaded image from {path}");
+            }
+            else
+            {
+                StartCoroutine(ShowToast("Failed to load image!"));
+                Debug.LogError($"[SceneBuilder] Failed to load image from {path}");
+            }
+        }
+#else
+        Debug.LogWarning("File dialog is only supported in the Unity Editor.");
+        StartCoroutine(ShowToast("File dialog not supported in build."));
+#endif
+    }
+
+    void Display3DTexture(Texture2D tex)
+    {
+        if (uiDocument == null) return;
+        
+        // Get the container for the 3D rendered image
+        var container = uiDocument.rootVisualElement.Q<VisualElement>("3d-rendered-image");
+        if (container != null)
+        {
+            // Set texture properties for clean display
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            
+            // Set the texture as background image
+            container.style.backgroundImage = new StyleBackground(tex);
+            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+            container.style.unityBackgroundImageTintColor = Color.white;
+            
+            // Make container square (1:1 aspect ratio) by setting width equal to height
+            container.style.alignSelf = Align.Center;
+            
+            // Use the height as the width to maintain 1:1 ratio
+            container.RegisterCallback<GeometryChangedEvent>(evt =>
+            {
+                float height = container.resolvedStyle.height;
+                if (height > 0)
+                {
+                    container.style.width = height;
+                }
+            });
+            
+            container.MarkDirtyRepaint();
+        }
+        else
+        {
+            Debug.LogWarning("Could not find '3d-rendered-image' VisualElement in the UI Document.");
+        }
+    }
+
     void DisplayTexture(Texture2D tex)
     {
         if (uiDocument == null) return;
@@ -725,27 +932,31 @@ public class SceneBuilder : MonoBehaviour
         var container = uiDocument.rootVisualElement.Q<VisualElement>("ray-traced-image");
         if (container != null)
         {
-            // Check if we already have an Image element
-            var image = container.Q<UnityEngine.UIElements.Image>();
-            if (image == null)
+            // Set texture properties for clean display
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            
+            // Set the texture as background image
+            container.style.backgroundImage = new StyleBackground(tex);
+            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+            container.style.unityBackgroundImageTintColor = Color.white;
+            
+            // Make container square (1:1 aspect ratio) by setting width equal to height
+            // This removes the red bars on the sides for square images
+            container.style.alignSelf = Align.Center;
+            
+            // Use the height as the width to maintain 1:1 ratio
+            container.RegisterCallback<GeometryChangedEvent>(evt =>
             {
-                // Create a new UI Toolkit Image element if none exists
-                image = new UnityEngine.UIElements.Image();
-                
-                // Set image to scale to fit the container while maintaining aspect ratio
-                image.style.width = new StyleLength(Length.Percent(100));
-                image.style.height = new StyleLength(Length.Percent(100));
-                image.scaleMode = ScaleMode.ScaleToFit;
-                
-                // Add the image to the container
-                container.Add(image);
-            }
+                float height = container.resolvedStyle.height;
+                if (height > 0)
+                {
+                    container.style.width = height;
+                }
+            });
             
-            // Convert the Texture2D to a Sprite
-            var sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
-            image.sprite = sprite;
-            
-            // Debug.Log("Displayed render on UI Toolkit VisualElement."); 
+            // Trigger initial sizing
+            container.MarkDirtyRepaint();
         }
         else
         {
