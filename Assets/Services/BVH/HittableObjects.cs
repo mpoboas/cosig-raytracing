@@ -21,8 +21,8 @@ public class SphereInstance : IHittable
         // Calculate world-space AABB by transforming unit sphere corners
         // Unit sphere fits in [-1, 1] cube
         bbox = AABB.Empty;
-        Vector3[] corners =
-        [
+        Vector3[] corners = new Vector3[]
+        {
             new Vector3(-1, -1, -1),
             new Vector3( 1, -1, -1),
             new Vector3(-1,  1, -1),
@@ -30,8 +30,8 @@ public class SphereInstance : IHittable
             new Vector3(-1, -1,  1),
             new Vector3( 1, -1,  1),
             new Vector3(-1,  1,  1),
-            new Vector3( 1,  1,  1),
-        ];
+            new Vector3( 1,  1,  1)
+        };
         for (int i = 0; i < 8; i++)
         {
             bbox.Encapsulate(objectToWorld.MultiplyPoint3x4(corners[i]));
