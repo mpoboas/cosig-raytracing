@@ -56,4 +56,15 @@ public struct RenderSettings
     
     /// <summary>Number of Anti-Aliasing samples per pixel (1=off, 2=2x, 4=4x, etc).</summary>
     public int AASamples;
+
+    // ===== Distributed Ray Tracing Effects =====
+
+    public bool EnableSoftShadows;
+    public float LightSize;        // Radius of point light source
+
+    public bool EnableGlossy;
+    public float SurfaceRoughness; // Cone dispersion angle
+
+    public bool EnableMotionBlur;
+    public float ShutterSpeed;     // Exposure time interval
 }

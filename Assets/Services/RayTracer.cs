@@ -147,6 +147,16 @@ public class RayTracer
         computeShader.SetInt("_EnableRefraction", settings.EnableRefraction ? 1 : 0);
         computeShader.SetInt("_AASamples", settings.AASamples);
         computeShader.SetFloat("_LightIntensity", settings.LightIntensityScale);
+
+        // DRT Uniforms
+        computeShader.SetInt("_EnableSoftShadows", settings.EnableSoftShadows ? 1 : 0);
+        computeShader.SetFloat("_LightSize", settings.LightSize);
+
+        computeShader.SetInt("_EnableGlossy", settings.EnableGlossy ? 1 : 0);
+        computeShader.SetFloat("_SurfaceRoughness", settings.SurfaceRoughness);
+
+        computeShader.SetInt("_EnableMotionBlur", settings.EnableMotionBlur ? 1 : 0);
+        computeShader.SetFloat("_ShutterSpeed", settings.ShutterSpeed);
         
         // Background color
         Color bgColor = settings.BackgroundColorOverride ?? (scene.Image != null ? scene.Image.background : new Color(0.2f, 0.2f, 0.2f));
@@ -297,6 +307,16 @@ public class RayTracer
         computeShader.SetInt("_EnableRefraction", settings.EnableRefraction ? 1 : 0);
         computeShader.SetInt("_AASamples", settings.AASamples);
         computeShader.SetFloat("_LightIntensity", settings.LightIntensityScale);
+
+        // DRT Uniforms
+        computeShader.SetInt("_EnableSoftShadows", settings.EnableSoftShadows ? 1 : 0);
+        computeShader.SetFloat("_LightSize", settings.LightSize);
+
+        computeShader.SetInt("_EnableGlossy", settings.EnableGlossy ? 1 : 0);
+        computeShader.SetFloat("_SurfaceRoughness", settings.SurfaceRoughness);
+
+        computeShader.SetInt("_EnableMotionBlur", settings.EnableMotionBlur ? 1 : 0);
+        computeShader.SetFloat("_ShutterSpeed", settings.ShutterSpeed);
         
         // Background color (UI override or scene default)
         Color bgColor = settings.BackgroundColorOverride ?? (scene.Image != null ? scene.Image.background : new Color(0.2f, 0.2f, 0.2f));

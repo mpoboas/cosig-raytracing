@@ -24,6 +24,9 @@ public class SceneBuilder : MonoBehaviour
     private ProgressBar progressBar;
     private Label lblProgressText;
     private Button btnStart;
+    
+    // DRT Buttons
+    private Button btnShadows, btnGlossy, btnBlur;
 
     // --- UI Controls ---
     // Resolution
@@ -51,6 +54,19 @@ public class SceneBuilder : MonoBehaviour
     // AA Toggle
     private Button btnAA;
     private int currentAASamples = 1;
+
+    // DRT Toggles state
+
+    // Shadows: 0=Hard, 1=5.0, 2=10.0, 3=20.0 (Increased for visibility)
+    private int shadowMode = 0;
+    private float[] shadowSizes = new float[] { 0f, 5.0f, 10.0f, 20.0f };
+
+    // Glossy: boolean is fine for now
+    private bool isGlossy = false;
+
+    // Blur: 0=Off, 1=0.5, 2=1.0, 3=2.0
+    private int blurMode = 0;
+    private float[] blurSpeeds = new float[] { 0f, 0.5f, 1.0f, 2.0f };
 
     // State
     private bool isRendering = false;
@@ -125,6 +141,16 @@ public class SceneBuilder : MonoBehaviour
         // AA Button
         btnAA = root.Q<Button>("btn-aa-toggle");
         if (btnAA != null) btnAA.clicked += OnAAToggleClicked;
+
+        // DRT Buttons
+        btnShadows = root.Q<Button>("btn-shadow-toggle");
+        if (btnShadows != null) btnShadows.clicked += OnShadowToggleClicked;
+
+        btnGlossy = root.Q<Button>("btn-glossy-toggle");
+        if (btnGlossy != null) btnGlossy.clicked += OnGlossyToggleClicked;
+
+        btnBlur = root.Q<Button>("btn-blur-toggle");
+        if (btnBlur != null) btnBlur.clicked += OnBlurToggleClicked;
 
         lblElapsedTime = root.Q<Label>("lbl-elapsed-time");
         progressBar = root.Q<ProgressBar>("progress-bar");
@@ -447,6 +473,16 @@ public class SceneBuilder : MonoBehaviour
         // Quality Settings
         settings.AASamples = currentAASamples;
 
+        // DRT Settings
+        settings.EnableSoftShadows = shadowMode > 0;
+        settings.LightSize = shadowSizes[shadowMode];
+
+        settings.EnableGlossy = isGlossy;
+        settings.SurfaceRoughness = 0.05f;
+
+        settings.EnableMotionBlur = blurMode > 0;
+        settings.ShutterSpeed = blurSpeeds[blurMode];
+
         return settings;
     }
 
@@ -751,6 +787,35 @@ public class SceneBuilder : MonoBehaviour
         StartCoroutine(ShowToast($"Anti-Aliasing: {currentAASamples}x"));
     }
 
+    void OnShadowToggleClicked()
+    {
+        shadowMode = (shadowMode + 1) % shadowSizes.Length;
+        float val = shadowSizes[shadowMode];
+        
+        if (btnShadows != null) 
+            btnShadows.text = shadowMode == 0 ? "Shadows: Hard" : $"Shadows: {val:0.0}";
+            
+        StartCoroutine(ShowToast(shadowMode == 0 ? "Hard Shadows" : $"Soft Shadow Size: {val}"));
+    }
+
+    void OnGlossyToggleClicked()
+    {
+        isGlossy = !isGlossy;
+        if (btnGlossy != null) btnGlossy.text = isGlossy ? "Glossy: On" : "Glossy: Off";
+        StartCoroutine(ShowToast(isGlossy ? "Glossy Reflections Enabled" : "Glossy Reflections Disabled"));
+    }
+
+    void OnBlurToggleClicked()
+    {
+        blurMode = (blurMode + 1) % blurSpeeds.Length;
+        float val = blurSpeeds[blurMode];
+        
+        if (btnBlur != null) 
+            btnBlur.text = blurMode == 0 ? "Blur: Off" : $"Blur: {val:0.0}";
+            
+        StartCoroutine(ShowToast(blurMode == 0 ? "Motion Blur Disabled" : $"Shutter Speed: {val}"));
+    }
+
     /// <summary>
     /// Displays a RenderTexture directly in the UI (no CPU copy needed).
     /// Used by real-time rendering for maximum performance.
@@ -1006,6 +1071,12 @@ public class SceneBuilder : MonoBehaviour
                 preset.PresetName = Path.GetFileNameWithoutExtension(path);
                 preset.IsOrthographic = isOrthographicMode;
                 
+                // Save top bar settings
+                preset.AASamples = currentAASamples;
+                preset.ShadowMode = shadowMode;
+                preset.EnableGlossy = isGlossy;
+                preset.BlurMode = blurMode;
+                
                 // Serialize to JSON
                 string json = JsonUtility.ToJson(preset, prettyPrint: true);
                 
@@ -1145,6 +1216,29 @@ public class SceneBuilder : MonoBehaviour
         if (togDiffuse != null) togDiffuse.value = preset.EnableDiffuse;
         if (togSpecular != null) togSpecular.value = preset.EnableSpecular;
         if (togRefraction != null) togRefraction.value = preset.EnableRefraction;
+        
+        // Top bar settings
+        // AA
+        currentAASamples = preset.AASamples;
+        if (btnAA != null) btnAA.text = $"AA: {currentAASamples}x";
+        
+        // Shadows
+        shadowMode = preset.ShadowMode;
+        if (btnShadows != null)
+        {
+            btnShadows.text = shadowMode == 0 ? "Shadows: Hard" : $"Shadows: {shadowSizes[shadowMode]:0.0}";
+        }
+        
+        // Glossy
+        isGlossy = preset.EnableGlossy;
+        if (btnGlossy != null) btnGlossy.text = isGlossy ? "Glossy: On" : "Glossy: Off";
+        
+        // Motion Blur
+        blurMode = preset.BlurMode;
+        if (btnBlur != null)
+        {
+            btnBlur.text = blurMode == 0 ? "Blur: Off" : $"Blur: {blurSpeeds[blurMode]:0.0}";
+        }
     }
 
     void OnLoadImageClicked()

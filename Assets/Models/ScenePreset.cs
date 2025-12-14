@@ -63,6 +63,20 @@ public class ScenePreset
     /// <summary>Enable refraction</summary>
     public bool EnableRefraction = true;
     
+    // ===== Top Bar Settings =====
+    
+    /// <summary>Anti-aliasing sample count (1, 2, 4, 8)</summary>
+    public int AASamples = 1;
+    
+    /// <summary>Shadow mode index (0=Hard, 1-3=Soft sizes)</summary>
+    public int ShadowMode = 0;
+    
+    /// <summary>Enable glossy reflections</summary>
+    public bool EnableGlossy = false;
+    
+    /// <summary>Motion blur mode index (0=Off, 1-3=blur intensities)</summary>
+    public int BlurMode = 0;
+    
     // ===== Metadata =====
     
     /// <summary>Preset name/description</summary>

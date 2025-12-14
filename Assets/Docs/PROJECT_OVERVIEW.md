@@ -1,6 +1,6 @@
 # COSIG Ray Tracing Project Overview
 
-This document summarizes the current project structure, scene models, parsing logic, **GPU-accelerated ray tracing pipeline**, and constraints. It is intended to onboard contributors (human or LLM) quickly and capture decisions made during development.
+This document summarizes the current project structure, scene models, parsing logic, **GPU-accelerated ray tracing pipeline**, distributed ray tracing effects, and UI features. It is intended to onboard contributors (human or LLM) quickly and capture decisions made during development.
 
 ## Goals
 
@@ -8,13 +8,15 @@ This document summarizes the current project structure, scene models, parsing lo
 - Support composite transformations, materials, light(s), spheres, boxes, and triangle meshes.
 - Achieve real-time or near-real-time rendering performance through GPU acceleration.
 - Support full recursive ray tracing: shadows, reflections, and refractions.
+- Implement **Distributed Ray Tracing** effects: soft shadows, glossy reflections, and motion blur.
+- Provide a comprehensive UI with real-time and static rendering modes.
 
 ## Architecture Overview
 
 The project uses a **hybrid CPU-GPU pipeline**:
 
-1. **CPU**: Scene parsing, BVH construction, and UI management
-2. **GPU**: Ray tracing (intersection, shading, shadows, reflections, refractions)
+1. **CPU**: Scene parsing, BVH construction, UI management, and preset serialization
+2. **GPU**: Ray tracing (intersection, shading, shadows, reflections, refractions, DRT effects)
 
 ```
 Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Triangles
@@ -22,6 +24,8 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
                            BVHBuilder → GPU BVH Nodes
                                 ↓
                         RayTracer (Compute Shader) → Rendered Texture
+                                ↓
+                           UI Display / GIF Export / PNG Save
 ```
 
 ## Project Structure (Key Files)
@@ -48,6 +52,18 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
     - MaxDepth (recursion limit)
     - EnableAmbient, EnableDiffuse, EnableSpecular, EnableRefraction toggles
     - IsOrthographic projection mode
+    - **Anti-Aliasing**: AASamples (1, 2, 4, 8)
+    - **Distributed Ray Tracing**:
+      - EnableSoftShadows, LightSize (area light radius)
+      - EnableGlossy, SurfaceRoughness (reflection blur)
+      - EnableMotionBlur, ShutterSpeed (camera shake intensity)
+
+- `Assets/Models/ScenePreset.cs`
+  - Serializable preset for saving/loading complete scene configurations:
+    - Scene file path and reference image path
+    - All render settings (resolution, colors, camera, lighting toggles)
+    - Top bar settings (AA, shadows, glossy, blur modes)
+    - Preset metadata (name, save timestamp)
 
 ### Services
 
@@ -61,12 +77,13 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
   - **Static BVH in Object Space**: Built once and cached until geometry changes
   - Key responsibilities:
     - Setup GPU buffers (BVH nodes, triangles, materials)
-    - Configure shader uniforms (camera, lighting, toggles)
+    - Configure shader uniforms (camera, lighting, toggles, DRT parameters)
     - Dispatch compute shader and read back results
-  - `RenderAsync(scene, settings, progress, token)`: Main async render method
+  - `RenderAsync(scene, settings, progress, token)`: High-quality async render for static mode
+  - `RenderToTexture(scene, settings)`: Fast synchronous render for real-time mode
   - `SetComputeShader(shader)`: Assigns the compute shader at runtime
   - `RebuildBVH(scene)`: Triggers BVH rebuild in **Object Space** (only when geometry changes)
-  - `InvalidateBVHCache()`: Forces BVH rebuild on next render
+  - `ClearRenderTarget()`: Clears cached render texture for mode transitions
   - `SetupMaterialBuffer(scene, kernel)`: Uploads material data to GPU
 
 - `Assets/Services/SceneGeometryConverter.cs`
@@ -102,7 +119,7 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
 
 - `Assets/Shaders/BVHRayTracing.compute` ⭐ **Main Compute Shader**
   - **Kernel**: `CSMain` (8×8 thread groups)
-  - **Features**:
+  - **Core Features**:
     - Iterative BVH traversal (stack-based, max depth 32)
     - Möller-Trumbore triangle intersection
     - **Smooth normal interpolation** using barycentric coordinates
@@ -112,24 +129,41 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
     - **Blinn-Phong specular highlights**
     - Perspective and **orthographic** projection modes
     - Debug visualization modes (depth, normals, hit/miss)
+  - **Anti-Aliasing**:
+    - Stratified jittered sampling (N×N grid per pixel)
+    - Configurable sample count (1, 2, 4, 8)
+  - **Distributed Ray Tracing Effects**:
+    - **Soft Shadows**: Jittered area light sampling with configurable light size
+    - **Glossy Reflections**: Perturbed reflection vectors based on surface roughness
+    - **Motion Blur**: Camera shake simulation via jittered ray origins
+  - **Helper Functions**:
+    - `Hash22`, `Hash33`: Pseudo-random number generation for jittering
+    - `RandomUnitVector`: Uniform sphere sampling for DRT effects
   - **Uniforms**:
-    - `_CameraDistance`, `_CameraFOV`, `_CameraToWorld`, `_CameraInverseProjection`
-    - `_MaxDepth`, `_DebugMode`
-    - `_EnableAmbient`, `_EnableDiffuse`, `_EnableSpecular`, `_EnableRefraction`
-    - `_LightIntensity`, `_LightPosition`
-    - `_BackgroundColor`
-    - `_IsOrthographic`, `_OrthoSize`
+    - Camera: `_CameraDistance`, `_CameraFOV`, `_CameraToWorld`, `_CameraInverseProjection`
+    - Rendering: `_MaxDepth`, `_DebugMode`, `_AASamples`
+    - Lighting: `_EnableAmbient`, `_EnableDiffuse`, `_EnableSpecular`, `_EnableRefraction`
+    - Light: `_LightIntensity`, `_LightPosition`
+    - Background: `_BackgroundColor`
+    - Projection: `_IsOrthographic`, `_OrthoSize`
+    - DRT: `_EnableSoftShadows`, `_LightSize`, `_EnableGlossy`, `_SurfaceRoughness`, `_EnableMotionBlur`, `_ShutterSpeed`
 
 ### UI
 
 - `Assets/SceneBuilder.cs`
   - Main MonoBehaviour entry point
   - Wires UI controls to `RenderSettings`
-  - Handles scene loading, render triggering, and GIF generation
-  - Manages progress bar and elapsed time display
+  - Handles scene loading, render triggering, mode switching, and GIF generation
+  - Manages progress bar, elapsed time display, and toast notifications
+  - Supports **Save/Load Scene Presets** (JSON serialization)
+  - Implements **Real-time Mode** with live preview updates
 
 - `Assets/GUIs/gui_raytracing.uxml`
   - UI Toolkit layout with controls for all render settings
+  - Top menu bar with action buttons and DRT effect toggles
+
+- `Assets/GUIs/ui_style_raytracing.uss`
+  - Custom styling including Space Grotesk font integration
 
 ## Rendering Pipeline
 
@@ -175,20 +209,24 @@ IMPLEMENTED OPTIMIZATION (mathematically equivalent):
   - Rays transformed by M_scene^(-1) → Camera Space → Object Space
   
 BVHRayTracing.compute CSMain:
-  ├── Generate ray in Camera Space: origin=(0,0,distance), dir based on FOV
-  ├── Transform ray to Object Space using M_scene^(-1) matrix
-  ├── For each depth level:
-  │   ├── Traverse BVH iteratively (Object Space)
-  │   ├── Find closest intersection (Object Space)
-  │   ├── Calculate local shading (ambient + diffuse + specular)
-  │   ├── Cast shadow ray (Object Space)
-  │   └── Spawn reflection/refraction ray (Object Space)
-  └── Write final color to RenderTexture
+  ├── For each AA sample:
+  │   ├── Generate ray with jittered offset (stratified sampling)
+  │   ├── Apply Motion Blur (jitter camera position)
+  │   ├── Transform ray from Camera Space to Object Space
+  │   ├── For each depth level:
+  │   │   ├── Traverse BVH iteratively (Object Space)
+  │   │   ├── Find closest intersection (Object Space)
+  │   │   ├── Calculate local shading (ambient + diffuse + specular)
+  │   │   ├── Cast shadow ray with Soft Shadow jitter
+  │   │   └── Spawn reflection ray with Glossy perturbation
+  │   └── Accumulate sample color
+  └── Write averaged color to RenderTexture
 ```
 
-### 6. Readback (CPU)
+### 6. Readback / Display
 ```
-Texture2D.ReadPixels() → Display in UI / Save to file
+Real-time Mode: Direct RenderTexture display in UI
+Static Mode: Texture2D.ReadPixels() → Display in UI / Save to file
 ```
 
 ## Key Features
@@ -205,6 +243,21 @@ Texture2D.ReadPixels() → Display in UI / Save to file
 - ✅ **Perspective**: Standard pinhole camera model
 - ✅ **Orthographic**: Parallel rays, constant viewing direction
 
+### Anti-Aliasing
+- ✅ **Stratified Jittered Sampling**: Reduces aliasing with sub-pixel ray distribution
+- ✅ **Configurable Sample Count**: 1x (off), 2x, 4x, 8x via toolbar button
+
+### Distributed Ray Tracing
+- ✅ **Soft Shadows**: Area light simulation with jittered shadow rays
+  - Configurable light sizes: Hard, 5.0, 10.0, 20.0
+  - Creates realistic penumbra effects
+- ✅ **Glossy Reflections**: Rough surface simulation
+  - Perturbed reflection vectors based on surface roughness (0.05)
+  - Creates frosted/blurry reflections
+- ✅ **Motion Blur**: Camera shake simulation
+  - Configurable shutter speeds: Off, 0.5, 1.0, 2.0
+  - Jittered camera origin per sample
+
 ### Smooth Shading
 - Spheres use **per-vertex normals** (vertex position normalized)
 - Triangle intersection **interpolates normals** using barycentric coordinates
@@ -217,17 +270,71 @@ Texture2D.ReadPixels() → Display in UI / Save to file
 - **Cache-aligned structs**: 32-byte GPU nodes for optimal memory access
 - **Parallel GIF encoding**: Multi-threaded LZW compression
 
+### Rendering Modes
+- ✅ **Static Mode**: High-quality single-frame rendering with progress indication
+- ✅ **Real-time Mode**: Live preview with FPS counter, instant UI feedback
+
 ### UI Controls
-- Resolution (X, Y)
-- Background Color (RGB sliders)
-- Light Intensity (0-5 scale)
-- Lighting Toggles (Ambient, Diffuse, Specular, Refraction)
-- Camera Position (X, Y, Z)
-- Camera Rotation (X, Y, Z sliders, 0-360°)
-- Camera FOV (default 50°)
-- Recursion Depth
-- Orthographic projection toggle
-- Progress bar with elapsed time
+
+#### Top Menu Bar
+- **File I/O**: Load Data, Save Image, Load Image
+- **Scene Presets**: Save Scene, Load Scene (JSON with all settings)
+- **Actions**: Start Ray Tracing (static render), Exit
+- **Mode Toggle**: Static/Realtime mode switch
+- **GIF**: Generate 360° rotation animation
+- **About**: Credits popup
+
+#### Quality Settings (Top Bar Buttons)
+- **AA**: Anti-aliasing samples (1x, 2x, 4x, 8x)
+- **Shadows**: Shadow mode (Hard, 5.0, 10.0, 20.0 soft)
+- **Glossy**: Glossy reflections toggle (On/Off)
+- **Blur**: Motion blur intensity (Off, 0.5, 1.0, 2.0)
+
+#### Side Panel Controls
+- **Resolution**: Output size (X, Y)
+- **Background Color**: RGB sliders (0-100) with text field sync
+- **Light Intensity**: Slider (0-5 scale) with text field sync
+- **Lighting Toggles**: Ambient, Diffuse, Specular, Refraction
+- **Camera Position**: X, Y, Z text fields
+- **Camera Rotation**: X, Y, Z sliders (0-360°) with text field sync
+- **Camera FOV**: Field of view (degrees)
+- **Orthographic**: Projection mode toggle button
+- **Recursion Depth**: Max ray bounces
+
+#### Progress Indicators
+- Progress bar with percentage
+- Elapsed time display (or FPS in real-time mode)
+- Toast notifications for user feedback
+
+## Scene Preset System
+
+Scene presets save the complete application state to JSON files:
+
+```json
+{
+  "SceneFilePath": "Assets/Resources/Scenes/scene.txt",
+  "ReferenceImagePath": null,
+  "ResolutionX": 512,
+  "ResolutionY": 512,
+  "BackgroundColor": [0.2, 0.2, 0.2],
+  "LightIntensity": 1.0,
+  "CameraPosition": [0, 0, 30],
+  "CameraRotation": [0, 45, 0],
+  "CameraFov": 50,
+  "IsOrthographic": false,
+  "RecursionDepth": 3,
+  "EnableAmbient": true,
+  "EnableDiffuse": true,
+  "EnableSpecular": true,
+  "EnableRefraction": true,
+  "AASamples": 4,
+  "ShadowMode": 2,
+  "EnableGlossy": true,
+  "BlurMode": 0,
+  "PresetName": "my_preset",
+  "SavedAt": "2024-12-14 17:00:00"
+}
+```
 
 ## Scene File Format
 
@@ -253,15 +360,21 @@ Box { transformIndex; materialIndex }
 2. Enter Play Mode
 3. Click **Load Data** to parse a scene file
 4. Adjust settings in the UI panel
-5. Click **Start Ray Tracing** to render
+5. Click **Start Ray Tracing** to render (or enable **Realtime** mode for live preview)
 6. View the result in the preview panel
-7. Find saved images in `Assets/Output/`
+7. Click **Save Image** to export (PNG or GIF)
 
 ### GIF Generation
 1. Configure desired settings
 2. Click the **GIF** button in the menu bar
 3. Wait for 36 frames to render and encode
 4. GIF is saved to `Assets/Output/rotation_[timestamp].gif`
+
+### Using Scene Presets
+1. Configure your desired render settings
+2. Click **Save Scene** to export a JSON preset
+3. Later, click **Load Scene** to restore all settings
+4. The preset includes the scene file path, camera settings, and all top bar options
 
 ## Code Documentation
 
@@ -275,17 +388,20 @@ All source code is fully documented in English with:
 
 | File | Purpose |
 |------|---------|
-| `RayTracer.cs` | GPU ray tracer orchestration, BVH caching, camera transformations |
-| `BVHRayTracing.compute` | Compute shader with BVH traversal, shading, shadows, reflections, refractions |
+| `RayTracer.cs` | GPU ray tracer orchestration, BVH caching, camera transformations, DRT uniforms |
+| `BVHRayTracing.compute` | Compute shader with BVH traversal, AA, DRT effects, shading |
 | `SceneGeometryConverter.cs` | Converts primitives to GPU triangles with smooth normals |
 | `BVHBuilder.cs` | Median-split BVH construction with flattening for GPU |
 | `GifGenerator.cs` | Animated GIF export with parallel LZW compression |
 | `SceneService.cs` | Scene file parsing |
 | `ObjectData.cs` | Scene data structures |
-| `RenderSettings.cs` | UI-to-renderer settings container |
+| `RenderSettings.cs` | UI-to-renderer settings container (includes DRT settings) |
+| `ScenePreset.cs` | JSON-serializable preset for save/load functionality |
+| `SceneBuilder.cs` | Main UI controller, mode management, preset I/O |
 
 ## Dependencies
 
 - **Unity 2021+** with Compute Shader support
 - **UI Toolkit** for the interface
+- **Space Grotesk** font (included)
 - No external packages required
