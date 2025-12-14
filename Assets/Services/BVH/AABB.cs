@@ -18,16 +18,11 @@ public struct AABB
         this.min = min;
         this.max = max;
     }
-
-    /// <summary>
-    /// Returns an empty AABB (inverted bounds) that can be expanded.
-    /// Any point will cause expansion when passed to Encapsulate().
-    /// </summary>
+    
+    // Create an empty AABB
     public static AABB Empty => new AABB(Vector3.positiveInfinity, Vector3.negativeInfinity);
 
-    /// <summary>
-    /// Expands the bounding box to include a point.
-    /// </summary>
+    // Expands the bounding box to include a point.
     public void Encapsulate(Vector3 point)
     {
         min = Vector3.Min(min, point);
@@ -43,21 +38,17 @@ public struct AABB
         max = Vector3.Max(max, other.max);
     }
 
-    /// <summary>
-    /// Tests ray-AABB intersection using the slab method.
-    /// Returns true if the ray intersects the box within [tMin, tMax].
-    /// </summary>
-    /// <param name="ray">The ray to test</param>
-    /// <param name="tMin">Minimum distance (typically 0 or small epsilon)</param>
-    /// <param name="tMax">Maximum distance (or current closest hit)</param>
+    // Check if the ray intersects the AABB
+    // tMin: closest distance
+    // tMax: farthest distance
     public bool Intersect(Ray ray, float tMin, float tMax)
     {
         // Test intersection with each axis-aligned slab
         for (int a = 0; a < 3; a++)
         {
             float invD = 1.0f / ray.direction[a];
-            float t0 = (min[a] - ray.origin[a]) * invD;
-            float t1 = (max[a] - ray.origin[a]) * invD;
+            float t0 = (min[a] - ray.origin[a]) * invD; // Where enters the box
+            float t1 = (max[a] - ray.origin[a]) * invD; // Where exits the box
 
             // Handle negative direction (swap t0/t1)
             if (invD < 0.0f)
@@ -77,6 +68,6 @@ public struct AABB
         return true;
     }
     
-    /// <summary>Center point of the bounding box.</summary>
+    // Get the center of the AABB
     public Vector3 Center => (min + max) * 0.5f;
 }

@@ -488,7 +488,7 @@ public class SceneBuilder : MonoBehaviour
 
     void Start()
     {
-        // Load default scene initially but do not render
+        // Load test scene by default
         string filePath = "Assets/Resources/Scenes/test_scene_1.txt"; 
         if (File.Exists(filePath))
         {
@@ -546,21 +546,24 @@ public class SceneBuilder : MonoBehaviour
             gifPlaybackCoroutine = null;
         }
 
+        // When start ray tracing is clicked
         if (isRendering)
         {
-            // Cancel if already running? Or just ignore?
-            // Let's implement cancel.
+            // Cancel if already running and exits function
             cancellationTokenSource?.Cancel();
             return;
         }
 
         if (scene == null)
         {
+            // When there is no scene file loaded and exits function
             Debug.LogError("No scene loaded! Please load a scene first.");
             StartCoroutine(ShowToast("No scene loaded!"));
             return;
         }
+        // When the scene is loaded and is ready to start ray tracing
         isRendering = true;
+        // Switches the label of the button to 'Cancel'
         if (btnStart != null) btnStart.text = "Cancel";
         
         stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -592,15 +595,18 @@ public class SceneBuilder : MonoBehaviour
             DisplayTexture(lastRenderedTexture);
             StartCoroutine(ShowToast("Rendering Complete!"));
         }
+        // Catches if the render was canceled
         catch (OperationCanceledException)
         {
             StartCoroutine(ShowToast("Rendering Canceled."));
         }
+        // Catches if there was fail in the render
         catch (Exception ex)
         {
             Debug.LogError($"Ray tracing failed: {ex}");
             StartCoroutine(ShowToast("Rendering Failed!"));
         }
+        // Finishes the function
         finally
         {
             isRendering = false;
@@ -613,12 +619,16 @@ public class SceneBuilder : MonoBehaviour
 
     void OnLoadDataClicked()
     {
+        // Enables the user to choose a scene file to load
+
+        // If already rendering exits the method
         if (isRendering) return;
 
 #if UNITY_EDITOR
         string path = EditorUtility.OpenFilePanel("Load Scene Data", "Assets/Resources/Scenes", "txt");
         if (!string.IsNullOrEmpty(path))
         {
+            // The file exists and is being loaded
             scene = sceneService.LoadScene(path);
             loadedSceneFilePath = path; // Track for scene preset saving
             UpdateUIFromScene(scene); // Populate UI on Load
@@ -632,7 +642,10 @@ public class SceneBuilder : MonoBehaviour
 
     async void OnSaveImageClicked()
     {
-        if (lastRenderedTexture == null && (gifFrames == null || gifFrames.Count == 0))
+        // saves the last rendered image
+
+        // if there is no rendered image, returns log error
+        if (lastRenderedTexture == null)
         {
             Debug.LogWarning("No image to save. Render a scene first.");
             StartCoroutine(ShowToast("No image to save!"));
@@ -1033,6 +1046,7 @@ public class SceneBuilder : MonoBehaviour
 
     void OnExitClicked()
     {
+        // Stops the application
 #if UNITY_EDITOR
         EditorApplication.isPlaying = false;
 #else
@@ -1347,6 +1361,7 @@ public class SceneBuilder : MonoBehaviour
 
     IEnumerator ShowToast(string message)
     {
+        // Sets the toast to be shown
         if (uiDocument == null) yield break;
         var root = uiDocument.rootVisualElement;
         

@@ -1,10 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// Sphere primitive with transform support for CPU ray tracing.
-/// Represents a unit sphere in object space, transformed to world space.
-/// </summary>
+// Sphere primitive with transform support for CPU ray tracing
+// Represents a unit sphere in object space, transformed to world space
 public class SphereInstance : IHittable
 {
     public Matrix4x4 objectToWorld;   // Object-to-world transformation
@@ -12,10 +10,8 @@ public class SphereInstance : IHittable
     public int materialIndex;          // Material reference
     public AABB bbox;                   // World-space bounding box
 
-    /// <summary>
-    /// Creates a sphere instance with the given transformation.
-    /// The unit sphere (radius 1 at origin) is transformed to world space.
-    /// </summary>
+    // Creates a sphere instance with the given transformation
+    // The unit sphere (radius 1 at origin) is transformed to world space
     public SphereInstance(int materialIndex, Matrix4x4 objectToWorld)
     {
         this.materialIndex = materialIndex;
@@ -25,26 +21,25 @@ public class SphereInstance : IHittable
         // Calculate world-space AABB by transforming unit sphere corners
         // Unit sphere fits in [-1, 1] cube
         bbox = AABB.Empty;
-        Vector3[] corners = new Vector3[8];
-        corners[0] = new Vector3(-1, -1, -1);
-        corners[1] = new Vector3( 1, -1, -1);
-        corners[2] = new Vector3(-1,  1, -1);
-        corners[3] = new Vector3( 1,  1, -1);
-        corners[4] = new Vector3(-1, -1,  1);
-        corners[5] = new Vector3( 1, -1,  1);
-        corners[6] = new Vector3(-1,  1,  1);
-        corners[7] = new Vector3( 1,  1,  1);
-
+        Vector3[] corners =
+        [
+            new Vector3(-1, -1, -1),
+            new Vector3( 1, -1, -1),
+            new Vector3(-1,  1, -1),
+            new Vector3( 1,  1, -1),
+            new Vector3(-1, -1,  1),
+            new Vector3( 1, -1,  1),
+            new Vector3(-1,  1,  1),
+            new Vector3( 1,  1,  1),
+        ];
         for (int i = 0; i < 8; i++)
         {
             bbox.Encapsulate(objectToWorld.MultiplyPoint3x4(corners[i]));
         }
     }
 
-    /// <summary>
-    /// Tests ray-sphere intersection by transforming the ray to object space,
-    /// intersecting with a unit sphere, then transforming results back.
-    /// </summary>
+    // Tests ray-sphere intersection by transforming the ray to object space,
+    // intersecting with a unit sphere, then transforming results back
     public bool Hit(Ray ray, float tMin, float tMax, out HitRecord rec)
     {
         rec = new HitRecord();
@@ -84,9 +79,7 @@ public class SphereInstance : IHittable
 
     public AABB GetBoundingBox() => bbox;
 
-    /// <summary>
-    /// Intersects a ray with a unit sphere at origin using the quadratic formula.
-    /// </summary>
+    // Intersects a ray with a unit sphere at origin using the quadratic formula
     private bool IntersectUnitSphere(Ray r, out float t)
     {
         // Ray: P = O + t*D
@@ -115,10 +108,8 @@ public class SphereInstance : IHittable
     }
 }
 
-/// <summary>
-/// Box primitive with transform support for CPU ray tracing.
-/// Represents a unit cube (-0.5 to +0.5) in object space, transformed to world space.
-/// </summary>
+// Box primitive with transform support for CPU ray tracing
+// Represents a unit cube (-0.5 to +0.5) in object space, transformed to world space
 public class BoxInstance : IHittable
 {
     public Matrix4x4 objectToWorld;
@@ -126,10 +117,8 @@ public class BoxInstance : IHittable
     public int materialIndex;
     public AABB bbox;
 
-    /// <summary>
-    /// Creates a box instance with the given transformation.
-    /// The unit cube is transformed to world space.
-    /// </summary>
+    // Creates a box instance with the given transformation.
+    // The unit cube is transformed to world space
     public BoxInstance(int materialIndex, Matrix4x4 objectToWorld)
     {
         this.materialIndex = materialIndex;
@@ -155,10 +144,8 @@ public class BoxInstance : IHittable
         }
     }
 
-    /// <summary>
-    /// Tests ray-box intersection by transforming the ray to object space,
-    /// intersecting with a unit cube, then transforming results back.
-    /// </summary>
+    // Tests ray-box intersection by transforming the ray to object space,
+    // intersecting with a unit cube, then transforming results back
     public bool Hit(Ray ray, float tMin, float tMax, out HitRecord rec)
     {
         rec = new HitRecord();
@@ -190,10 +177,8 @@ public class BoxInstance : IHittable
 
     public AABB GetBoundingBox() => bbox;
 
-    /// <summary>
-    /// Intersects a ray with a unit cube using the slab method.
-    /// Returns the intersection distance and face normal.
-    /// </summary>
+    // Intersects a ray with a unit cube using the slab method
+    // Returns the intersection distance and face normal
     private bool IntersectUnitBox(Ray r, out float t, out Vector3 n)
     {
         Vector3 min = new Vector3(-0.5f, -0.5f, -0.5f);
@@ -239,10 +224,8 @@ public class BoxInstance : IHittable
     }
 }
 
-/// <summary>
-/// Triangle primitive for CPU ray tracing.
-/// Stores pre-transformed vertices in world space.
-/// </summary>
+// Triangle primitive for CPU ray tracing
+// Stores pre-transformed vertices in world space
 public class TriangleInstance : IHittable
 {
     public Vector3 v0;           // First vertex (world space)
@@ -252,9 +235,7 @@ public class TriangleInstance : IHittable
     public AABB bbox;
     public Vector3 normal;       // Pre-computed face normal
 
-    /// <summary>
-    /// Creates a triangle from three vertices in world space.
-    /// </summary>
+    // Creates a triangle from three vertices in world space
     public TriangleInstance(int materialIndex, Vector3 v0, Vector3 v1, Vector3 v2)
     {
         this.materialIndex = materialIndex;
@@ -272,9 +253,7 @@ public class TriangleInstance : IHittable
         normal = Vector3.Cross(v1 - v0, v2 - v0).normalized;
     }
 
-    /// <summary>
-    /// Tests ray-triangle intersection using the Möller-Trumbore algorithm.
-    /// </summary>
+    // Tests ray-triangle intersection using the Möller-Trumbore algorithm
     public bool Hit(Ray ray, float tMin, float tMax, out HitRecord rec)
     {
         rec = new HitRecord();
@@ -297,11 +276,9 @@ public class TriangleInstance : IHittable
 
     public AABB GetBoundingBox() => bbox;
 
-    /// <summary>
-    /// Möller-Trumbore ray-triangle intersection algorithm.
-    /// Returns distance t and barycentric coordinates (alpha, beta, gamma) where
-    /// hit_point = alpha*v0 + beta*v1 + gamma*v2.
-    /// </summary>
+    // Möller-Trumbore ray-triangle intersection algorithm
+    // Returns distance t and barycentric coordinates (alpha, beta, gamma) where
+    // hit_point = alpha*v0 + beta*v1 + gamma*v2
     private bool IntersectTriangleWS(Ray r, Vector3 aWS, Vector3 bWS, Vector3 cWS, out float t, out Vector3 bary)
     {
         t = 0f; bary = Vector3.zero;
