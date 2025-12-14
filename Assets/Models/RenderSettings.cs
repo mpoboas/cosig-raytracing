@@ -51,4 +51,9 @@ public struct RenderSettings
     
     /// <summary>If true, use orthographic projection. If false, use perspective.</summary>
     public bool IsOrthographic;
+
+    // ===== Quality Settings =====
+    
+    /// <summary>Number of Anti-Aliasing samples per pixel (1=off, 2=2x, 4=4x, etc).</summary>
+    public int AASamples;
 }

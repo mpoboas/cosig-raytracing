@@ -145,6 +145,7 @@ public class RayTracer
         computeShader.SetInt("_EnableDiffuse", settings.EnableDiffuse ? 1 : 0);
         computeShader.SetInt("_EnableSpecular", settings.EnableSpecular ? 1 : 0);
         computeShader.SetInt("_EnableRefraction", settings.EnableRefraction ? 1 : 0);
+        computeShader.SetInt("_AASamples", settings.AASamples);
         computeShader.SetFloat("_LightIntensity", settings.LightIntensityScale);
         
         // Background color
@@ -294,6 +295,7 @@ public class RayTracer
         computeShader.SetInt("_EnableDiffuse", settings.EnableDiffuse ? 1 : 0);
         computeShader.SetInt("_EnableSpecular", settings.EnableSpecular ? 1 : 0);
         computeShader.SetInt("_EnableRefraction", settings.EnableRefraction ? 1 : 0);
+        computeShader.SetInt("_AASamples", settings.AASamples);
         computeShader.SetFloat("_LightIntensity", settings.LightIntensityScale);
         
         // Background color (UI override or scene default)

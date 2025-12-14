@@ -48,6 +48,10 @@ public class SceneBuilder : MonoBehaviour
     private Button btnModeToggle;
     private bool isRealtimeMode = false;
 
+    // AA Toggle
+    private Button btnAA;
+    private int currentAASamples = 1;
+
     // State
     private bool isRendering = false;
     private bool isOrthographicMode = false; // For orthographic projection toggle
@@ -117,6 +121,10 @@ public class SceneBuilder : MonoBehaviour
         // About Button
         var btnAbout = root.Q<Button>("about");
         if (btnAbout != null) btnAbout.clicked += OnAboutClicked;
+
+        // AA Button
+        btnAA = root.Q<Button>("btn-aa-toggle");
+        if (btnAA != null) btnAA.clicked += OnAAToggleClicked;
 
         lblElapsedTime = root.Q<Label>("lbl-elapsed-time");
         progressBar = root.Q<ProgressBar>("progress-bar");
@@ -436,6 +444,9 @@ public class SceneBuilder : MonoBehaviour
         // Projection mode
         settings.IsOrthographic = isOrthographicMode;
 
+        // Quality Settings
+        settings.AASamples = currentAASamples;
+
         return settings;
     }
 
@@ -722,6 +733,22 @@ public class SceneBuilder : MonoBehaviour
         }
         
         StartCoroutine(ShowToast(isRealtimeMode ? "Realtime mode enabled" : "Static mode enabled"));
+    }
+
+    void OnAAToggleClicked()
+    {
+        // Cycle AA samples: 1 -> 2 -> 4 -> 8 -> 1
+        if (currentAASamples == 1) currentAASamples = 2;
+        else if (currentAASamples == 2) currentAASamples = 4;
+        else if (currentAASamples == 4) currentAASamples = 8;
+        else currentAASamples = 1;
+
+        if (btnAA != null) btnAA.text = $"AA: {currentAASamples}x";
+        
+        // If in realtime mode, clearing render target helps visualize the change immediately if we were accumulating
+        // But here we do per-frame sampling, so it just updates naturally.
+        // However, a toast is nice.
+        StartCoroutine(ShowToast($"Anti-Aliasing: {currentAASamples}x"));
     }
 
     /// <summary>
