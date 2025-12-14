@@ -59,6 +59,138 @@ public class RayTracer
     }
 
     /// <summary>
+    /// Clears the render target without releasing buffers.
+    /// Call when switching between render modes to ensure fresh state.
+    /// </summary>
+    public void ClearRenderTarget()
+    {
+        if (targetTexture != null)
+        {
+            targetTexture.Release();
+            targetTexture = null;
+        }
+    }
+
+    /// <summary>
+    /// Synchronous render method for real-time rendering.
+    /// Returns the GPU RenderTexture directly without CPU readback (much faster).
+    /// The returned texture is reused between frames - do not destroy it.
+    /// </summary>
+    /// <param name="scene">Scene data containing geometry, materials, lights, and camera</param>
+    /// <param name="settings">Render settings from UI (resolution, toggles, camera overrides)</param>
+    /// <returns>RenderTexture with the rendered image (GPU-side, reused between calls)</returns>
+    public RenderTexture RenderToTexture(ObjectData scene, RenderSettings settings)
+    {
+        if (computeShader == null)
+        {
+            Debug.LogError("ComputeShader not assigned to RayTracer!");
+            return null;
+        }
+
+        // Determine output resolution
+        int width = settings.ResolutionOverride.HasValue ? settings.ResolutionOverride.Value.x : Mathf.Max(1, scene.Image != null ? scene.Image.horizontal : 256);
+        int height = settings.ResolutionOverride.HasValue ? settings.ResolutionOverride.Value.y : Mathf.Max(1, scene.Image != null ? scene.Image.vertical : 256);
+
+        // Build camera transformation matrix
+        Matrix4x4 M_scene = Matrix4x4.identity;
+        if (scene.Camera != null && scene.Camera.transformationIndex >= 0 && scene.Camera.transformationIndex < scene.Transformations.Count)
+        {
+            M_scene = BuildComposite(scene.Transformations[scene.Camera.transformationIndex]);
+        }
+
+        // Compute the ray transformation matrix (Camera Space -> Object Space)
+        Matrix4x4 cameraToObject;
+        bool usingOverrides = settings.CameraPositionOverride.HasValue || settings.CameraRotationOverride.HasValue;
+        
+        if (usingOverrides)
+        {
+            Vector3 pos = settings.CameraPositionOverride ?? Vector3.zero;
+            Vector3 rot = settings.CameraRotationOverride ?? Vector3.zero;
+            Matrix4x4 cameraTransform = Matrix4x4.TRS(pos, Quaternion.Euler(rot), Vector3.one);
+            cameraToObject = cameraTransform.inverse;
+        }
+        else
+        {
+            cameraToObject = M_scene.inverse;
+        }
+
+        // Rebuild BVH only when geometry changes
+        if (bvhNeedsRebuild || cachedScene != scene)
+        {
+            RebuildBVH(scene);
+            cachedScene = scene;
+            bvhNeedsRebuild = false;
+        }
+
+        // Create or resize render target if needed
+        if (targetTexture == null || targetTexture.width != width || targetTexture.height != height)
+        {
+            if (targetTexture != null) targetTexture.Release();
+            targetTexture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
+            targetTexture.enableRandomWrite = true;
+            targetTexture.Create();
+        }
+
+        // Bind shader resources
+        int kernel = computeShader.FindKernel("CSMain");
+        computeShader.SetTexture(kernel, "Result", targetTexture);
+        computeShader.SetBuffer(kernel, "BVHNodes", bvhBuffer);
+        computeShader.SetBuffer(kernel, "Triangles", triangleBuffer);
+        SetupMaterialBuffer(scene, kernel);
+        
+        // Configure rendering parameters
+        computeShader.SetInt("_MaxDepth", settings.MaxDepth);
+        computeShader.SetInt("_DebugMode", 0);
+        computeShader.SetInt("_EnableAmbient", settings.EnableAmbient ? 1 : 0);
+        computeShader.SetInt("_EnableDiffuse", settings.EnableDiffuse ? 1 : 0);
+        computeShader.SetInt("_EnableSpecular", settings.EnableSpecular ? 1 : 0);
+        computeShader.SetInt("_EnableRefraction", settings.EnableRefraction ? 1 : 0);
+        computeShader.SetFloat("_LightIntensity", settings.LightIntensityScale);
+        
+        // Background color
+        Color bgColor = settings.BackgroundColorOverride ?? (scene.Image != null ? scene.Image.background : new Color(0.2f, 0.2f, 0.2f));
+        computeShader.SetVector("_BackgroundColor", new Vector4(bgColor.r, bgColor.g, bgColor.b, 1));
+        
+        // Light position in Object Space
+        Vector3 lightPos = Vector3.zero;
+        if (scene.Lights != null && scene.Lights.Count > 0)
+        {
+            var light = scene.Lights[0];
+            if (light.transformationIndex >= 0 && light.transformationIndex < scene.Transformations.Count)
+            {
+                Matrix4x4 lightMat = BuildComposite(scene.Transformations[light.transformationIndex]);
+                lightPos = lightMat.GetColumn(3);
+            }
+        }
+        computeShader.SetVector("_LightPosition", lightPos);
+
+        // Camera projection parameters
+        float fov = settings.CameraFovOverride.HasValue ? settings.CameraFovOverride.Value : (scene.Camera != null ? scene.Camera.verticalFovDeg : 50f);
+        float cameraDistance = scene.Camera != null ? scene.Camera.distance : 30f;
+        float aspect = (float)width / height;
+        Matrix4x4 projection = Matrix4x4.Perspective(fov, aspect, 0.1f, 1000f);
+        Matrix4x4 invProjection = projection.inverse;
+        
+        // Orthographic projection settings
+        computeShader.SetInt("_IsOrthographic", settings.IsOrthographic ? 1 : 0);
+        float orthoSize = cameraDistance * Mathf.Tan(Mathf.Deg2Rad * fov * 0.5f);
+        computeShader.SetFloat("_OrthoSize", orthoSize);
+
+        // Pass ray transformation matrix to shader
+        computeShader.SetMatrix("_CameraToWorld", cameraToObject);
+        computeShader.SetMatrix("_CameraInverseProjection", invProjection);
+        computeShader.SetFloat("_CameraDistance", cameraDistance);
+        computeShader.SetFloat("_CameraFOV", fov);
+        
+        // Dispatch compute shader (8x8 thread groups)
+        int threadGroupsX = Mathf.CeilToInt(width / 8.0f);
+        int threadGroupsY = Mathf.CeilToInt(height / 8.0f);
+        computeShader.Dispatch(kernel, threadGroupsX, threadGroupsY, 1);
+
+        return targetTexture;
+    }
+
+    /// <summary>
     /// Renders the scene asynchronously using GPU compute shaders.
     /// </summary>
     /// <param name="scene">Scene data containing geometry, materials, lights, and camera</param>
@@ -132,11 +264,6 @@ public class RayTracer
             RebuildBVH(scene);
             cachedScene = scene;
             bvhNeedsRebuild = false;
-            Debug.Log("[GPU RayTracer] BVH rebuilt (scene changed or first render)");
-        }
-        else
-        {
-            Debug.Log("[GPU RayTracer] BVH reused (camera moved, geometry unchanged)");
         }
 
         progress?.Report(0.5f);
@@ -205,8 +332,6 @@ public class RayTracer
         computeShader.SetFloat("_CameraDistance", cameraDistance);
         computeShader.SetFloat("_CameraFOV", fov);
         
-        Debug.Log($"[GPU RayTracer] Camera distance={cameraDistance}, FOV={fov}, Ortho={settings.IsOrthographic}");
-        
         // Dispatch compute shader (8x8 thread groups)
         int threadGroupsX = Mathf.CeilToInt(width / 8.0f);
         int threadGroupsY = Mathf.CeilToInt(height / 8.0f);
@@ -238,28 +363,12 @@ public class RayTracer
     /// </summary>
     private void RebuildBVH(ObjectData scene)
     {
-        Debug.Log("[GPU RayTracer] Rebuilding BVH in World Space...");
-        
         // Extract triangles in Object Space (object transforms only, no camera)
         var gpuTriangles = SceneGeometryConverter.ExtractTriangles(scene);
-        
-        // Debug: verify geometry extraction
-        if (gpuTriangles.Count > 0)
-        {
-            Debug.Log($"[GPU RayTracer] First triangle: v0={gpuTriangles[0].v0}, v1={gpuTriangles[0].v1}, v2={gpuTriangles[0].v2}");
-            if (gpuTriangles.Count > 1)
-                Debug.Log($"[GPU RayTracer] Second triangle: v0={gpuTriangles[1].v0}");
-        }
         
         // Build BVH using median-split algorithm
         BVHBuilder builder = new BVHBuilder();
         var bvh = builder.Build(gpuTriangles);
-        
-        // Debug: verify BVH construction
-        if (bvh.nodes.Length > 0)
-        {
-            Debug.Log($"[GPU RayTracer] Root BVH bounds: min={bvh.nodes[0].min}, max={bvh.nodes[0].max}");
-        }
         
         // Upload BVH nodes to GPU (32 bytes per node: 2x Vector3 + 2x int)
         if (bvhBuffer != null) bvhBuffer.Release();
@@ -270,8 +379,6 @@ public class RayTracer
         if (triangleBuffer != null) triangleBuffer.Release();
         triangleBuffer = new ComputeBuffer(bvh.triangles.Length, 88); 
         triangleBuffer.SetData(bvh.triangles);
-        
-        Debug.Log($"[GPU RayTracer] BVH Built. Nodes: {bvh.nodes.Length}, Tris: {bvh.triangles.Length}");
     }
 
     /// <summary>

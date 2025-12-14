@@ -469,6 +469,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
                 ray.direction = normalize(refractDir);
                 ray.invDirection = 1.0 / ray.direction;
                 attenuation *= matColor * kRefraction;
+                
             }
             else
             {

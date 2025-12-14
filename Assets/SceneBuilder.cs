@@ -44,6 +44,10 @@ public class SceneBuilder : MonoBehaviour
     // Renderer
     private TextField txtRecursionDepth;
 
+    // Mode Toggle
+    private Button btnModeToggle;
+    private bool isRealtimeMode = false;
+
     // State
     private bool isRendering = false;
     private bool isOrthographicMode = false; // For orthographic projection toggle
@@ -52,6 +56,10 @@ public class SceneBuilder : MonoBehaviour
     private CancellationTokenSource cancellationTokenSource;
     private Coroutine gifPlaybackCoroutine;
     private List<Texture2D> gifFrames;
+
+    // File paths for scene preset save/load
+    private string loadedSceneFilePath = null;
+    private string loadedReferenceImagePath = null;
 
     public ComputeShader rayTracingShader;
 
@@ -90,6 +98,17 @@ public class SceneBuilder : MonoBehaviour
         // Orthographic Projection Button
         btnOrthographic = root.Q<Button>("cam_orto");
         if (btnOrthographic != null) btnOrthographic.clicked += OnOrthographicClicked;
+
+        // Mode Toggle Button
+        btnModeToggle = root.Q<Button>("btn-mode-toggle");
+        if (btnModeToggle != null) btnModeToggle.clicked += OnModeToggleClicked;
+
+        // Save/Load Scene Preset Buttons
+        var btnSaveScene = root.Q<Button>("btn-save-scene");
+        if (btnSaveScene != null) btnSaveScene.clicked += OnSaveSceneClicked;
+        
+        var btnLoadScene = root.Q<Button>("btn-load-scene");
+        if (btnLoadScene != null) btnLoadScene.clicked += OnLoadSceneClicked;
 
         // GIF Generator Button
         var btnGif = root.Q<Button>("gif");
@@ -161,20 +180,11 @@ public class SceneBuilder : MonoBehaviour
             txtBgB.RegisterValueChangedCallback(evt => { if (int.TryParse(evt.newValue, out int v)) sldBgB.SetValueWithoutNotify(v / 2.55f); });
         }
 
-        // Lighting Toggles ("Reflections" container)
-        var reflectionsContainer = root.Q<VisualElement>("Reflections");
-        if (reflectionsContainer != null)
-        {
-            // Order in UXML: Ambient, Diffuse, Specular, Refraction
-            var toggles = reflectionsContainer.Query<Toggle>().ToList();
-            if (toggles.Count >= 4)
-            {
-                togAmbient = toggles[0];
-                togDiffuse = toggles[1];
-                togSpecular = toggles[2];
-                togRefraction = toggles[3];
-            }
-        }
+        // Lighting Toggles (by name)
+        togAmbient = root.Q<Toggle>("tog-ambient");
+        togDiffuse = root.Q<Toggle>("tog-diffuse");
+        togSpecular = root.Q<Toggle>("tog-specular");
+        togRefraction = root.Q<Toggle>("tog-refraction");
 
         // Light Intensity ("Intensity" container)
         var intensityContainer = root.Q<VisualElement>("Intensity");
@@ -400,7 +410,7 @@ public class SceneBuilder : MonoBehaviour
         settings.EnableSpecular = togSpecular?.value ?? true;
         settings.EnableRefraction = togRefraction?.value ?? true;
 
-        // Camera Position Overrideck if any value is set/valid to trigger override
+        // Camera Position Override - always apply if valid text fields
         if (float.TryParse(txtCamPosX?.value, out float cx) && 
             float.TryParse(txtCamPosY?.value, out float cy) && 
             float.TryParse(txtCamPosZ?.value, out float cz))
@@ -408,19 +418,13 @@ public class SceneBuilder : MonoBehaviour
             settings.CameraPositionOverride = new Vector3(cx, cy, cz);
         }
 
-        // Rotations 
-        // Use values directly (0-360)
-        // Check if any slider is non-zero
-        if (sldRotX != null || sldRotY != null || sldRotZ != null)
+        // Camera Rotation Override - always apply if sliders exist (even for 0,0,0)
+        if (sldRotX != null && sldRotY != null && sldRotZ != null)
         {
-            float rotX = sldRotX != null ? sldRotX.value : 0;
-            float rotY = sldRotY != null ? sldRotY.value : 0;
-            float rotZ = sldRotZ != null ? sldRotZ.value : 0;
-            
-            if (rotX != 0 || rotY != 0 || rotZ != 0)
-            {
-                settings.CameraRotationOverride = new Vector3(rotX, rotY, rotZ);
-            }
+            float rotX = sldRotX.value;
+            float rotY = sldRotY.value;
+            float rotZ = sldRotZ.value;
+            settings.CameraRotationOverride = new Vector3(rotX, rotY, rotZ);
         }
 
         // FOV
@@ -442,13 +446,14 @@ public class SceneBuilder : MonoBehaviour
         if (File.Exists(filePath))
         {
             scene = sceneService.LoadScene(filePath);
-            LogSceneSummary(scene);
+            loadedSceneFilePath = filePath; // Track for scene preset saving
             UpdateUIFromScene(scene); // Populate UI initially
         }
     }
 
     void Update()
     {
+        // Update elapsed time display during static rendering
         if (isRendering && stopwatch != null)
         {
             TimeSpan ts = stopwatch.Elapsed;
@@ -462,6 +467,25 @@ public class SceneBuilder : MonoBehaviour
                     lblElapsedTime.text = $"Elapsed Time: {ts.Minutes}m {ts.Seconds}s";
                 else
                     lblElapsedTime.text = $"Elapsed Time: {ts.Hours}H {ts.Minutes}m {ts.Seconds}s";
+            }
+        }
+
+        // Real-time rendering loop
+        if (isRealtimeMode && scene != null && !isRendering)
+        {
+            RenderSettings settings = GetRenderSettingsFromUI();
+            RenderTexture rt = rayTracer.RenderToTexture(scene, settings);
+            
+            if (rt != null)
+            {
+                DisplayRenderTexture(rt);
+                
+                // Update FPS display
+                if (lblElapsedTime != null)
+                {
+                    float fps = 1f / Time.deltaTime;
+                    lblElapsedTime.text = $"Realtime: {fps:F1} FPS";
+                }
             }
         }
     }
@@ -489,8 +513,6 @@ public class SceneBuilder : MonoBehaviour
             StartCoroutine(ShowToast("No scene loaded!"));
             return;
         }
-
-        Debug.Log("Starting Ray Tracing...");
         isRendering = true;
         if (btnStart != null) btnStart.text = "Cancel";
         
@@ -521,12 +543,10 @@ public class SceneBuilder : MonoBehaviour
             lastRenderedTexture = resultTexture;
             
             DisplayTexture(lastRenderedTexture);
-            Debug.Log("Ray tracing complete.");
             StartCoroutine(ShowToast("Rendering Complete!"));
         }
         catch (OperationCanceledException)
         {
-            Debug.Log("Ray tracing canceled.");
             StartCoroutine(ShowToast("Rendering Canceled."));
         }
         catch (Exception ex)
@@ -553,9 +573,8 @@ public class SceneBuilder : MonoBehaviour
         if (!string.IsNullOrEmpty(path))
         {
             scene = sceneService.LoadScene(path);
-            LogSceneSummary(scene);
+            loadedSceneFilePath = path; // Track for scene preset saving
             UpdateUIFromScene(scene); // Populate UI on Load
-            Debug.Log($"Loaded scene from {path}");
             StartCoroutine(ShowToast($"Loaded: {Path.GetFileName(path)}"));
         }
 #else
@@ -608,7 +627,6 @@ public class SceneBuilder : MonoBehaviour
                     15); // 15 centiseconds per frame
                 
                 StartCoroutine(ShowToast($"GIF saved: {Path.GetFileName(path)}"));
-                Debug.Log($"[SceneBuilder] Saved GIF to {path}");
             }
             else
             {
@@ -622,7 +640,6 @@ public class SceneBuilder : MonoBehaviour
                     
                     RayTracer.SaveTexture(texToSave, path);
                     StartCoroutine(ShowToast($"Image saved: {Path.GetFileName(path)}"));
-                    Debug.Log($"[SceneBuilder] Saved image to {path}");
                 }
             }
         }
@@ -650,8 +667,87 @@ public class SceneBuilder : MonoBehaviour
         {
             txtCamFov.value = isOrthographicMode ? "120" : sceneFov.ToString("F1");
         }
+    }
+
+    void OnModeToggleClicked()
+    {
+        isRealtimeMode = !isRealtimeMode;
         
-        Debug.Log($"[SceneBuilder] Orthographic Projection: {(isOrthographicMode ? "ON" : "OFF")}");
+        // Clear render target to ensure fresh state when switching modes
+        rayTracer.ClearRenderTarget();
+        
+        // Update button text and appearance
+        if (btnModeToggle != null)
+        {
+            btnModeToggle.text = isRealtimeMode ? "Mode: Realtime" : "Mode: Static";
+            btnModeToggle.style.backgroundColor = isRealtimeMode 
+                ? new StyleColor(new Color(0.2f, 0.6f, 0.9f)) // Blue when realtime
+                : new StyleColor(StyleKeyword.Initial);
+        }
+        
+        // Disable Start button in realtime mode (rendering is continuous)
+        if (btnStart != null)
+        {
+            btnStart.SetEnabled(!isRealtimeMode);
+            btnStart.style.opacity = isRealtimeMode ? 0.5f : 1f;
+        }
+        
+        // Show toast notification
+        if (isRealtimeMode && scene == null)
+        {
+            StartCoroutine(ShowToast("Load a scene first!"));
+            isRealtimeMode = false;
+            if (btnModeToggle != null)
+            {
+                btnModeToggle.text = "Mode: Static";
+                btnModeToggle.style.backgroundColor = new StyleColor(StyleKeyword.Initial);
+            }
+            if (btnStart != null)
+            {
+                btnStart.SetEnabled(true);
+                btnStart.style.opacity = 1f;
+            }
+            return;
+        }
+        
+        // When switching to static mode, clear the displayed image to show it needs re-rendering
+        if (!isRealtimeMode)
+        {
+            var container = uiDocument?.rootVisualElement?.Q<VisualElement>("ray-traced-image");
+            if (container != null)
+            {
+                container.style.backgroundImage = StyleKeyword.None;
+                container.MarkDirtyRepaint();
+            }
+        }
+        
+        StartCoroutine(ShowToast(isRealtimeMode ? "Realtime mode enabled" : "Static mode enabled"));
+    }
+
+    /// <summary>
+    /// Displays a RenderTexture directly in the UI (no CPU copy needed).
+    /// Used by real-time rendering for maximum performance.
+    /// </summary>
+    void DisplayRenderTexture(RenderTexture rt)
+    {
+        if (uiDocument == null || rt == null) return;
+        
+        var container = uiDocument.rootVisualElement.Q<VisualElement>("ray-traced-image");
+        if (container != null)
+        {
+            // Set the RenderTexture as background image
+            container.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));
+            container.style.unityBackgroundImageTintColor = Color.white;
+            
+            // ScaleToFit maintains aspect ratio
+            #pragma warning disable 0618
+            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+            #pragma warning restore 0618
+            
+            container.style.flexGrow = 1;
+            container.style.width = StyleKeyword.Auto;
+            container.style.height = new StyleLength(new Length(100, LengthUnit.Percent));
+        }
     }
 
     void OnAboutClicked()
@@ -795,8 +891,6 @@ public class SceneBuilder : MonoBehaviour
 
         try
         {
-            Debug.Log("[SceneBuilder] Starting GIF generation (360° rotation)...");
-            
             GifGenerator gifGen = new GifGenerator(rayTracer, scene);
             
             List<Texture2D> frames = await gifGen.GenerateRotationFrames(
@@ -824,7 +918,6 @@ public class SceneBuilder : MonoBehaviour
                 gifPlaybackCoroutine = StartCoroutine(PlayGifLoop(0.15f)); // 15cs delay
                 
                 StartCoroutine(ShowToast($"GIF ready! {frames.Count} frames."));
-                Debug.Log($"[SceneBuilder] GIF generated: {frames.Count} frames in {stopwatch.Elapsed.TotalSeconds:F2}s");
                 
                 if (lblElapsedTime != null)
                 {
@@ -859,6 +952,174 @@ public class SceneBuilder : MonoBehaviour
 #endif
     }
 
+    void OnSaveSceneClicked()
+    {
+        if (scene == null)
+        {
+            StartCoroutine(ShowToast("No scene loaded to save!"));
+            return;
+        }
+
+#if UNITY_EDITOR
+        string defaultName = $"preset_{DateTime.Now:yyyyMMdd_HHmmss}";
+        string path = EditorUtility.SaveFilePanel(
+            "Save Scene Preset",
+            "Assets/Output",
+            defaultName,
+            "json"
+        );
+        
+        if (!string.IsNullOrEmpty(path))
+        {
+            try
+            {
+                // Create preset from current UI settings
+                RenderSettings settings = GetRenderSettingsFromUI();
+                ScenePreset preset = ScenePreset.FromRenderSettings(settings, loadedSceneFilePath, loadedReferenceImagePath);
+                preset.PresetName = Path.GetFileNameWithoutExtension(path);
+                preset.IsOrthographic = isOrthographicMode;
+                
+                // Serialize to JSON
+                string json = JsonUtility.ToJson(preset, prettyPrint: true);
+                
+                // Ensure directory exists
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, json);
+                
+                StartCoroutine(ShowToast($"Preset saved: {Path.GetFileName(path)}"));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SceneBuilder] Failed to save preset: {ex.Message}");
+                StartCoroutine(ShowToast("Failed to save preset!"));
+            }
+        }
+#else
+        Debug.LogWarning("File dialog is only supported in the Unity Editor.");
+        StartCoroutine(ShowToast("File dialog not supported in build."));
+#endif
+    }
+
+    void OnLoadSceneClicked()
+    {
+#if UNITY_EDITOR
+        string path = EditorUtility.OpenFilePanel("Load Scene Preset", "Assets/Output", "json");
+        
+        if (!string.IsNullOrEmpty(path))
+        {
+            try
+            {
+                // Read and deserialize JSON
+                string json = File.ReadAllText(path);
+                ScenePreset preset = JsonUtility.FromJson<ScenePreset>(json);
+                
+                // Load scene data if path exists
+                if (!string.IsNullOrEmpty(preset.SceneFilePath) && File.Exists(preset.SceneFilePath))
+                {
+                    scene = sceneService.LoadScene(preset.SceneFilePath);
+                    loadedSceneFilePath = preset.SceneFilePath;
+                }
+                else if (!string.IsNullOrEmpty(preset.SceneFilePath))
+                {
+                    Debug.LogWarning($"[SceneBuilder] Scene file not found: {preset.SceneFilePath}");
+                    StartCoroutine(ShowToast("Scene file not found. Load manually."));
+                }
+                
+                // Load reference image if path exists
+                if (!string.IsNullOrEmpty(preset.ReferenceImagePath) && File.Exists(preset.ReferenceImagePath))
+                {
+                    byte[] fileData = File.ReadAllBytes(preset.ReferenceImagePath);
+                    Texture2D tex = new Texture2D(2, 2);
+                    if (tex.LoadImage(fileData))
+                    {
+                        loadedReferenceImagePath = preset.ReferenceImagePath;
+                        Display3DTexture(tex);
+                    }
+                }
+                
+                // Apply preset values to UI controls
+                ApplyPresetToUI(preset);
+                
+                StartCoroutine(ShowToast($"Preset loaded: {preset.PresetName}"));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SceneBuilder] Failed to load preset: {ex.Message}");
+                StartCoroutine(ShowToast("Failed to load preset!"));
+            }
+        }
+#else
+        Debug.LogWarning("File dialog is only supported in the Unity Editor.");
+        StartCoroutine(ShowToast("File dialog not supported in build."));
+#endif
+    }
+
+    /// <summary>
+    /// Applies a loaded scene preset to the UI controls.
+    /// </summary>
+    void ApplyPresetToUI(ScenePreset preset)
+    {
+        // Resolution
+        if (txtResX != null) txtResX.value = preset.ResolutionX.ToString();
+        if (txtResY != null) txtResY.value = preset.ResolutionY.ToString();
+        
+        // Background color (sliders are 0-100)
+        if (sldBgR != null && preset.BackgroundColor.Length >= 3)
+        {
+            sldBgR.value = preset.BackgroundColor[0] * 100f;
+            sldBgG.value = preset.BackgroundColor[1] * 100f;
+            sldBgB.value = preset.BackgroundColor[2] * 100f;
+        }
+        
+        // Light intensity (slider 0-100 maps to 0-5)
+        if (sldLightIntensity != null) sldLightIntensity.value = preset.LightIntensity * 20f;
+        if (txtLightIntensity != null) txtLightIntensity.value = preset.LightIntensity.ToString("F1");
+        
+        // Camera position
+        if (txtCamPosX != null && preset.CameraPosition.Length >= 3)
+        {
+            txtCamPosX.value = preset.CameraPosition[0].ToString("F1");
+            txtCamPosY.value = preset.CameraPosition[1].ToString("F1");
+            txtCamPosZ.value = preset.CameraPosition[2].ToString("F1");
+        }
+        
+        // Camera rotation
+        if (sldRotX != null && preset.CameraRotation.Length >= 3)
+        {
+            sldRotX.value = preset.CameraRotation[0];
+            sldRotY.value = preset.CameraRotation[1];
+            sldRotZ.value = preset.CameraRotation[2];
+        }
+        if (txtRotX != null && preset.CameraRotation.Length >= 3)
+        {
+            txtRotX.value = preset.CameraRotation[0].ToString("F0");
+            txtRotY.value = preset.CameraRotation[1].ToString("F0");
+            txtRotZ.value = preset.CameraRotation[2].ToString("F0");
+        }
+        
+        // Camera FOV
+        if (txtCamFov != null) txtCamFov.value = preset.CameraFov.ToString("F1");
+        sceneFov = preset.CameraFov;
+        
+        // Orthographic mode
+        isOrthographicMode = preset.IsOrthographic;
+        if (btnOrthographic != null)
+        {
+            btnOrthographic.style.backgroundColor = isOrthographicMode 
+                ? new StyleColor(new Color(0.3f, 0.7f, 0.3f))
+                : new StyleColor(StyleKeyword.Initial);
+        }
+        
+        // Recursion depth
+        if (txtRecursionDepth != null) txtRecursionDepth.value = preset.RecursionDepth.ToString();
+        
+        // Lighting toggles
+        if (togAmbient != null) togAmbient.value = preset.EnableAmbient;
+        if (togDiffuse != null) togDiffuse.value = preset.EnableDiffuse;
+        if (togSpecular != null) togSpecular.value = preset.EnableSpecular;
+        if (togRefraction != null) togRefraction.value = preset.EnableRefraction;
+    }
+
     void OnLoadImageClicked()
     {
 #if UNITY_EDITOR
@@ -870,6 +1131,7 @@ public class SceneBuilder : MonoBehaviour
             Texture2D tex = new Texture2D(2, 2);
             if (tex.LoadImage(fileData))
             {
+                loadedReferenceImagePath = path; // Track for scene preset saving
                 Display3DTexture(tex);
                 StartCoroutine(ShowToast($"Loaded: {Path.GetFileName(path)}"));
                 Debug.Log($"[SceneBuilder] Loaded image from {path}");

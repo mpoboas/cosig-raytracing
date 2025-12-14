@@ -152,7 +152,6 @@ public class GifGenerator
         }
         
         progress?.Invoke(1f, "GIF saved!");
-        Debug.Log($"[GifGenerator] GIF saved to: {filePath}");
     }
     
     /// <summary>
@@ -182,8 +181,6 @@ public class GifGenerator
             
             writer.Write((byte)0x3B); // GIF trailer
         }
-        
-        Debug.Log($"[GifGenerator] GIF saved to: {filePath}");
     }
 
     #region GIF Format Helpers

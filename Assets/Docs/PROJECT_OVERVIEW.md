@@ -58,18 +58,20 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
 
 - `Assets/Services/RayTracer.cs` ⭐ **GPU Ray Tracer**
   - **GPU-accelerated ray tracer** using Unity Compute Shaders
+  - **Static BVH in Object Space**: Built once and cached until geometry changes
   - Key responsibilities:
     - Setup GPU buffers (BVH nodes, triangles, materials)
     - Configure shader uniforms (camera, lighting, toggles)
     - Dispatch compute shader and read back results
   - `RenderAsync(scene, settings, progress, token)`: Main async render method
   - `SetComputeShader(shader)`: Assigns the compute shader at runtime
-  - `RebuildBVH(scene, sceneMat)`: Triggers BVH rebuild with camera transform
+  - `RebuildBVH(scene)`: Triggers BVH rebuild in **Object Space** (only when geometry changes)
+  - `InvalidateBVHCache()`: Forces BVH rebuild on next render
   - `SetupMaterialBuffer(scene, kernel)`: Uploads material data to GPU
 
 - `Assets/Services/SceneGeometryConverter.cs`
   - Converts scene primitives to GPU-compatible triangle format
-  - `ExtractTriangles(scene, sceneMat)`: Returns `List<GPUTriangle>` in camera space
+  - `ExtractTriangles(scene)`: Returns `List<GPUTriangle>` in **Object Space** (object transforms only, no camera transform)
   - Handles spheres (tessellated UV sphere, 24×16 resolution with **smooth vertex normals**)
   - Handles boxes (6 faces, 12 triangles)
   - Handles triangle meshes from scene data
@@ -88,17 +90,20 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
     - `GPUBVHNode`: AABB min/max, leftOrFirst, count (32 bytes, cache-aligned)
     - `GPUMaterial`: color, ambient, diffuse, specular, refraction, ior (32 bytes)
   - `Build(triangles)`: Constructs flattened BVH from triangle list
-  - Uses median split on random axis for balanced tree
+  - Uses median split on longest axis for balanced tree
 
-- `Assets/Services/BVH/` (Legacy CPU components, retained for reference)
-  - `AABB.cs`, `IHittable.cs`, `BVHNode.cs`, `HittableObjects.cs`
+- `Assets/Services/BVH/` (Supporting components)
+  - `AABB.cs`: Axis-aligned bounding box with slab intersection
+  - `IHittable.cs`: Interface for ray-intersectable objects
+  - `BVHNode.cs`: CPU recursive BVH node implementation
+  - `HittableObjects.cs`: Sphere, Box, Triangle primitive implementations
 
 ### Shaders
 
 - `Assets/Shaders/BVHRayTracing.compute` ⭐ **Main Compute Shader**
   - **Kernel**: `CSMain` (8×8 thread groups)
   - **Features**:
-    - Iterative BVH traversal (stack-based, max depth 64)
+    - Iterative BVH traversal (stack-based, max depth 32)
     - Möller-Trumbore triangle intersection
     - **Smooth normal interpolation** using barycentric coordinates
     - **Shadow rays** with epsilon bias (1e-2) for acne prevention
@@ -133,41 +138,51 @@ Scene File → SceneService → ObjectData → SceneGeometryConverter → GPU Tr
 SceneService.LoadScene() → ObjectData
 ```
 
-### 2. Geometry Preparation (CPU)
+### 2. Geometry Preparation (CPU) - **OBJECT SPACE**
 ```
-SceneGeometryConverter.ExtractTriangles(scene, cameraMatrix)
-  ├── Transform all geometry into camera space
+SceneGeometryConverter.ExtractTriangles(scene)
+  ├── Transform geometry to Object Space (object transforms only, no camera)
   ├── Tessellate spheres with smooth vertex normals
   ├── Convert boxes to triangles
-  └── Return List<GPUTriangle>
+  └── Return List<GPUTriangle> in Object Space (enables static BVH)
 ```
 
-### 3. BVH Construction (CPU)
+### 3. BVH Construction (CPU) - **STATIC & CACHED**
 ```
 BVHBuilder.Build(triangles)
   ├── Sort by center position
-  ├── Recursive median split
-  └── Return flattened node array + triangle array
+  ├── Recursive median split on longest axis
+  ├── Return flattened node array + triangle array
+  └── BVH is CACHED (NOT rebuilt when camera moves!)
 ```
 
 ### 4. GPU Upload
 ```
-RayTracer.RebuildBVH()
+RayTracer.RebuildBVH() (only when geometry changes)
   ├── ComputeBuffer bvhBuffer (32 bytes/node)
   ├── ComputeBuffer triangleBuffer (88 bytes/tri)
   └── ComputeBuffer materialBuffer (32 bytes/mat)
 ```
 
-### 5. Ray Tracing (GPU)
+### 5. Ray Tracing (GPU) - **SCENE FILE SEMANTICS RESPECTED**
 ```
-BVHRayTracing.compute CSMain
-  ├── Generate ray (perspective or orthographic)
+SCENE FILE SEMANTICS:
+  - Camera is FIXED at (0, 0, distance), looking toward -Z
+  - M_scene (camera transformation) would be applied to GEOMETRY
+
+IMPLEMENTED OPTIMIZATION (mathematically equivalent):
+  - Geometry in Object Space (no M_scene) → Static BVH
+  - Rays transformed by M_scene^(-1) → Camera Space → Object Space
+  
+BVHRayTracing.compute CSMain:
+  ├── Generate ray in Camera Space: origin=(0,0,distance), dir based on FOV
+  ├── Transform ray to Object Space using M_scene^(-1) matrix
   ├── For each depth level:
-  │   ├── Traverse BVH iteratively
-  │   ├── Find closest intersection
+  │   ├── Traverse BVH iteratively (Object Space)
+  │   ├── Find closest intersection (Object Space)
   │   ├── Calculate local shading (ambient + diffuse + specular)
-  │   ├── Cast shadow ray
-  │   └── Spawn reflection/refraction ray
+  │   ├── Cast shadow ray (Object Space)
+  │   └── Spawn reflection/refraction ray (Object Space)
   └── Write final color to RenderTexture
 ```
 
@@ -198,6 +213,7 @@ Texture2D.ReadPixels() → Display in UI / Save to file
 ### Performance Optimizations
 - **GPU Compute Shader**: Massively parallel ray tracing
 - **BVH Acceleration**: O(log N) intersection vs O(N) linear search
+- **Static BVH Caching**: No rebuild when only camera changes
 - **Cache-aligned structs**: 32-byte GPU nodes for optimal memory access
 - **Parallel GIF encoding**: Multi-threaded LZW compression
 
@@ -246,6 +262,27 @@ Box { transformIndex; materialIndex }
 2. Click the **GIF** button in the menu bar
 3. Wait for 36 frames to render and encode
 4. GIF is saved to `Assets/Output/rotation_[timestamp].gif`
+
+## Code Documentation
+
+All source code is fully documented in English with:
+
+- **XML documentation** for all public classes, methods, and properties
+- **Inline comments** explaining algorithms and design decisions
+- **Section headers** organizing code into logical blocks
+
+### Core Files Documentation:
+
+| File | Purpose |
+|------|---------|
+| `RayTracer.cs` | GPU ray tracer orchestration, BVH caching, camera transformations |
+| `BVHRayTracing.compute` | Compute shader with BVH traversal, shading, shadows, reflections, refractions |
+| `SceneGeometryConverter.cs` | Converts primitives to GPU triangles with smooth normals |
+| `BVHBuilder.cs` | Median-split BVH construction with flattening for GPU |
+| `GifGenerator.cs` | Animated GIF export with parallel LZW compression |
+| `SceneService.cs` | Scene file parsing |
+| `ObjectData.cs` | Scene data structures |
+| `RenderSettings.cs` | UI-to-renderer settings container |
 
 ## Dependencies
 
