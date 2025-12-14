@@ -835,10 +835,6 @@ public class SceneBuilder : MonoBehaviour
             #pragma warning disable 0618
             container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
             #pragma warning restore 0618
-            
-            container.style.flexGrow = 1;
-            container.style.width = StyleKeyword.Auto;
-            container.style.height = new StyleLength(new Length(100, LengthUnit.Percent));
         }
     }
 
@@ -1324,11 +1320,6 @@ public class SceneBuilder : MonoBehaviour
             #pragma warning disable 0618 // Suppress deprecation warning
             container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
             #pragma warning restore 0618
-            
-            // Ensure container fills available space
-            container.style.flexGrow = 1;
-            container.style.width = StyleKeyword.Auto;
-            container.style.height = new StyleLength(new Length(100, LengthUnit.Percent));
             
             // Force repaint
             container.MarkDirtyRepaint();
