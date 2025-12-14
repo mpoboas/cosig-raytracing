@@ -1,93 +1,115 @@
 #pragma kernel CSMain
 
-// --- Data Structures ---
+// =============================================================================
+// GPU Ray Tracing Compute Shader with BVH Acceleration
+// 
+// Architecture:
+// - Rays are generated in Camera Space and transformed to Object Space
+// - BVH traversal uses a manual stack for GPU efficiency
+// - Supports reflection, refraction, and shadow rays
+// - Shading uses Blinn-Phong with configurable lighting components
+// =============================================================================
+
+// ===== Data Structures =====
 
 struct Ray
 {
     float3 origin;
     float3 direction;
-    float3 invDirection;
+    float3 invDirection;  // Pre-computed for fast AABB intersection
 };
 
 struct HitRecord
 {
-    bool hit;
-    float t;
-    float3 position;
-    float3 normal;
-    int materialIndex;
+    bool hit;              // True if ray hit geometry
+    float t;               // Distance to hit point
+    float3 position;       // World-space hit position
+    float3 normal;         // Interpolated surface normal
+    int materialIndex;     // Index into Materials buffer
 };
 
 struct GPUBVHNode
 {
-    float3 min;
-    int leftOrFirst; // Internal: Left Child Index | Leaf: First Triangle Index
-    float3 max;
-    int count;       // Internal: 0 | Leaf: Triangle Count
+    float3 min;            // AABB minimum corner
+    int leftOrFirst;       // Internal: left child index | Leaf: first triangle index
+    float3 max;            // AABB maximum corner
+    int count;             // Internal: 0 | Leaf: triangle count
 };
 
 struct GPUTriangle
 {
-    float3 v0;
-    float3 v1;
-    float3 v2;
-    float3 n0; // Vertex normal at v0
-    float3 n1; // Vertex normal at v1
-    float3 n2; // Vertex normal at v2
-    float3 center;
-    int materialIndex;
+    float3 v0;             // Vertex 0 position
+    float3 v1;             // Vertex 1 position
+    float3 v2;             // Vertex 2 position
+    float3 n0;             // Vertex 0 normal (for smooth shading)
+    float3 n1;             // Vertex 1 normal
+    float3 n2;             // Vertex 2 normal
+    float3 center;         // Pre-computed centroid
+    int materialIndex;     // Material reference
 };
 
 struct GPUMaterial
 {
-    float3 color;
-    float ambient;
-    float diffuse;
-    float specular;
-    float refraction;
-    float ior;
+    float3 color;          // Base surface color
+    float ambient;         // Ambient coefficient
+    float diffuse;         // Diffuse coefficient (Lambertian)
+    float specular;        // Specular coefficient (mirror reflection)
+    float refraction;      // Refraction coefficient (transparency)
+    float ior;             // Index of refraction
 };
 
-// --- Buffers & Uniforms ---
+// ===== Shader Resources =====
 
-RWTexture2D<float4> Result;
-StructuredBuffer<GPUBVHNode> BVHNodes;
-StructuredBuffer<GPUTriangle> Triangles;
-StructuredBuffer<GPUMaterial> Materials;
+RWTexture2D<float4> Result;              // Output render target
+StructuredBuffer<GPUBVHNode> BVHNodes;   // Flattened BVH tree
+StructuredBuffer<GPUTriangle> Triangles;  // Scene triangles
+StructuredBuffer<GPUMaterial> Materials;  // Material definitions
 
-float4x4 _CameraToWorld;
+// ===== Shader Uniforms =====
+
+float4x4 _CameraToWorld;         // Transforms rays from Camera Space to Object Space
 float4x4 _CameraInverseProjection;
-float _CameraDistance;
-float _CameraFOV;
-float3 _LightDirection; // Simple directional light for now
-float _Time;
-int _MaxDepth;
-int _DebugMode; // 0=normal, 1=depth, 2=normals, 3=hit visualization
-int _EnableAmbient;
-int _EnableDiffuse;
-int _EnableSpecular;
-int _EnableRefraction;
-float _LightIntensity;
-float3 _LightPosition;
-float4 _BackgroundColor;
-int _IsOrthographic;
-float _OrthoSize;
+float _CameraDistance;           // Distance from camera to projection plane
+float _CameraFOV;                // Vertical field of view in degrees
+float3 _LightDirection;          // (Unused - using _LightPosition instead)
+float _Time;                     // Animation time
+int _MaxDepth;                   // Maximum ray recursion depth
+int _DebugMode;                  // 0=normal, 1=depth, 2=normals, 3=hit visualization
+int _EnableAmbient;              // Toggle ambient lighting
+int _EnableDiffuse;              // Toggle diffuse lighting
+int _EnableSpecular;             // Toggle specular highlights
+int _EnableRefraction;           // Toggle refraction/transparency
+float _LightIntensity;           // Global light intensity multiplier
+float3 _LightPosition;           // Point light position in Object Space
+float4 _BackgroundColor;         // Color for rays that miss all geometry
+int _IsOrthographic;             // 0=perspective, 1=orthographic
+float _OrthoSize;                // Orthographic viewport half-height
+
+// ===== Constants =====
 
 static const float Infinity = 3.402823466e+38;
 static const float Epsilon = 1e-4;
 
-// --- Helper Functions ---
+// =============================================================================
+// Ray Creation
+// =============================================================================
 
 Ray CreateRay(float3 origin, float3 direction)
 {
     Ray ray;
     ray.origin = origin;
     ray.direction = direction;
-    ray.invDirection = 1.0f / direction;
+    ray.invDirection = 1.0f / direction;  // Pre-compute for AABB slab test
     return ray;
 }
 
-// Möller-Trumbore Intersection
+// =============================================================================
+// Triangle Intersection (Möller-Trumbore Algorithm)
+// 
+// Fast ray-triangle intersection with barycentric coordinate output.
+// Updates bestHit only if this intersection is closer than the current best.
+// =============================================================================
+
 void IntersectTriangle(Ray ray, GPUTriangle tri, inout HitRecord bestHit)
 {
     float3 v0v1 = tri.v1 - tri.v0;
@@ -95,54 +117,70 @@ void IntersectTriangle(Ray ray, GPUTriangle tri, inout HitRecord bestHit)
     float3 pvec = cross(ray.direction, v0v2);
     float det = dot(v0v1, pvec);
 
-    // Culling
-    // if (det < Epsilon) return; 
-
-    if (abs(det) < Epsilon) return; // No backface culling for now
+    // Skip nearly parallel rays (includes backfaces if det < 0)
+    if (abs(det) < Epsilon) return;
 
     float invDet = 1.0f / det;
     float3 tvec = ray.origin - tri.v0;
     float u = dot(tvec, pvec) * invDet;
 
+    // Check u barycentric coordinate bounds
     if (u < 0.0f || u > 1.0f) return;
 
     float3 qvec = cross(tvec, v0v1);
     float v = dot(ray.direction, qvec) * invDet;
 
+    // Check v barycentric coordinate bounds
     if (v < 0.0f || u + v > 1.0f) return;
 
     float t = dot(v0v2, qvec) * invDet;
 
+    // Check if this is the closest hit so far
     if (t > Epsilon && t < bestHit.t)
     {
         bestHit.hit = true;
         bestHit.t = t;
         bestHit.position = ray.origin + t * ray.direction;
-        // Interpolate vertex normals using barycentric coordinates (w = 1-u-v, u, v)
+        
+        // Interpolate vertex normals using barycentric coordinates (smooth shading)
         float w = 1.0 - u - v;
         bestHit.normal = normalize(w * tri.n0 + u * tri.n1 + v * tri.n2);
         bestHit.materialIndex = tri.materialIndex;
     }
 }
 
-// Slab Method Intersection
+// =============================================================================
+// AABB Intersection (Slab Method)
+// 
+// Fast ray-box intersection using the slab method.
+// Returns distance to entry point, or Infinity if no intersection.
+// =============================================================================
+
 float IntersectAABB(Ray ray, float3 boxMin, float3 boxMax)
 {
     float3 t0 = (boxMin - ray.origin) * ray.invDirection;
     float3 t1 = (boxMax - ray.origin) * ray.invDirection;
     
+    // Handle negative ray directions
     float3 tmin = min(t0, t1);
     float3 tmax = max(t0, t1);
     
-    float dstA = max(max(tmin.x, tmin.y), tmin.z);
-    float dstB = min(min(tmax.x, tmax.y), tmax.z);
+    // Find intersection of all slabs
+    float dstA = max(max(tmin.x, tmin.y), tmin.z);  // Entry point
+    float dstB = min(min(tmax.x, tmax.y), tmax.z);  // Exit point
     
+    // No intersection if entry is after exit or exit is behind ray origin
     if (dstA > dstB || dstB < 0) return Infinity;
     
-    return dstA; // Returns distance to entry point
+    return dstA;
 }
 
-// --- Traversal ---
+// =============================================================================
+// BVH Traversal
+// 
+// Iterative traversal using a manual stack for GPU efficiency.
+// Tests ray against all triangles in leaf nodes, using AABB culling for branches.
+// =============================================================================
 
 HitRecord TraverseBVH(Ray ray)
 {
@@ -153,55 +191,50 @@ HitRecord TraverseBVH(Ray ray)
     hit.position = float3(0, 0, 0);
     hit.materialIndex = -1;
 
-    // Manual Stack
+    // Manual stack (avoid recursion on GPU)
     int stack[32];
     int stackPtr = 0;
-    stack[stackPtr++] = 0; // Push Root
+    stack[stackPtr++] = 0;  // Push root node
 
     while (stackPtr > 0)
     {
-        int nodeIdx = stack[--stackPtr]; // Pop
+        int nodeIdx = stack[--stackPtr];
         GPUBVHNode node = BVHNodes[nodeIdx];
 
-        // Ensure we intersect the bounding box before checking contents
-        // Optimization: if distance to box is > current bestHit.t, skip
+        // Early exit: skip if AABB is farther than current best hit
         float dst = IntersectAABB(ray, node.min, node.max);
         if (dst >= hit.t) continue;
 
-        if (node.count > 0) // Leaf
+        if (node.count > 0)  // Leaf node
         {
+            // Test all triangles in this leaf
             for (int i = 0; i < node.count; i++)
             {
                 GPUTriangle tri = Triangles[node.leftOrFirst + i];
                 IntersectTriangle(ray, tri, hit);
             }
         }
-        else // Internal
+        else  // Internal node
         {
-            // Push children
-            // Optimization: Push the farther child first so the closer one is popped first
-            // Is calculating order worth it? For now, just push Right (First+1) then Left (First)
+            // Push children (right first so left is processed first)
             int leftIdx = node.leftOrFirst;
-            int rightIdx = leftIdx + 1;
-            
-            // Check bounding boxes to order push
-            // But we already check Intersect in loop start. 
-            // Simple push:
-            stack[stackPtr++] = rightIdx;
-            stack[stackPtr++] = leftIdx;
+            stack[stackPtr++] = leftIdx + 1;  // Right child
+            stack[stackPtr++] = leftIdx;       // Left child
         }
     }
     
     return hit;
 }
 
-// --- Shading ---
+// =============================================================================
+// Shading (Simplified version for non-recursive use)
+// =============================================================================
 
 float3 Shade(Ray ray, HitRecord hit)
 {
-    if (!hit.hit) return float3(0.05, 0.05, 0.05); // Background
+    if (!hit.hit) return float3(0.05, 0.05, 0.05);
 
-    // Get material
+    // Get material properties
     float3 matColor = float3(1, 1, 1);
     float kAmbient = 0.1;
     float kDiffuse = 0.7;
@@ -218,13 +251,13 @@ float3 Shade(Ray ray, HitRecord hit)
 
     float3 result = float3(0, 0, 0);
     
-    // Ambient
+    // Ambient component
     if (_EnableAmbient == 1)
     {
         result += matColor * kAmbient;
     }
     
-    // Diffuse + Specular
+    // Diffuse and specular from directional light
     if (_EnableDiffuse == 1 || _EnableSpecular == 1)
     {
         float3 lightDir = normalize(float3(1, 1, -1));
@@ -237,7 +270,7 @@ float3 Shade(Ray ray, HitRecord hit)
         
         if (_EnableSpecular == 1 && kSpecular > 0.0)
         {
-            // Blinn-Phong
+            // Blinn-Phong specular
             float3 viewDir = normalize(-ray.direction);
             float3 halfVec = normalize(lightDir + viewDir);
             float spec = pow(max(dot(hit.normal, halfVec), 0.0), 32.0);
@@ -249,7 +282,9 @@ float3 Shade(Ray ray, HitRecord hit)
 }
 
 
-// --- Main Kernel ---
+// =============================================================================
+// Main Kernel
+// =============================================================================
 
 [numthreads(8, 8, 1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
@@ -257,46 +292,67 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     uint width, height;
     Result.GetDimensions(width, height);
     
+    // Bounds check
     if (id.x >= width || id.y >= height) return;
 
-    // Ray generation matching CPU implementation EXACTLY
-    // Camera at (0, 0, distance), looking down -Z
-    // CPU code: origin=(0,0,distance), direction=(u,v,-distance).normalized
+    // ==========================================================================
+    // RAY GENERATION
+    // 
+    // Following the scene file semantics:
+    // - Camera is fixed at (0, 0, distance) in Camera Space, looking toward -Z
+    // - The scene transformation would normally move geometry into Camera Space
+    // 
+    // Our optimization (mathematically equivalent):
+    // - Geometry stays in Object Space (static BVH)
+    // - Rays are transformed from Camera Space to Object Space
+    // - _CameraToWorld contains the inverse scene transform
+    // ==========================================================================
     
-    // Calculate projection plane size from FOV
+    // Calculate projection plane dimensions based on FOV
     float aspect = (float)width / (float)height;
     float halfHeight = _CameraDistance * tan(radians(_CameraFOV) * 0.5);
     float planeHeight = 2.0 * halfHeight;
     float planeWidth = planeHeight * aspect;
     
-    // Pixel to projection plane coordinates
+    // Map pixel to projection plane coordinates (centered at origin)
     float u = ((id.x + 0.5) / width - 0.5) * planeWidth;
     float v = ((id.y + 0.5) / height - 0.5) * planeHeight;
     
-    // Primary ray in camera space
-    float3 rayOrigin;
-    float3 rayDir;
+    // Generate ray in Camera Space
+    float3 rayOriginCam;
+    float3 rayDirCam;
     
     if (_IsOrthographic == 1)
     {
-        // Orthographic: parallel rays, origin varies, direction is constant
+        // Orthographic: parallel rays, varying origin
         float orthoHalfHeight = _OrthoSize;
         float orthoHalfWidth = orthoHalfHeight * aspect;
         float orthoU = ((id.x + 0.5) / width - 0.5) * 2.0 * orthoHalfWidth;
         float orthoV = ((id.y + 0.5) / height - 0.5) * 2.0 * orthoHalfHeight;
-        rayOrigin = float3(orthoU, orthoV, _CameraDistance);
-        rayDir = float3(0, 0, -1); // All rays point straight down -Z
+        rayOriginCam = float3(orthoU, orthoV, _CameraDistance);
+        rayDirCam = float3(0, 0, -1);
     }
     else
     {
-        // Perspective: origin at camera, direction varies
-        rayOrigin = float3(0, 0, _CameraDistance);
-        rayDir = normalize(float3(u, v, -_CameraDistance));
+        // Perspective: rays from camera through projection plane
+        rayOriginCam = float3(0, 0, _CameraDistance);
+        float3 pixelPos = float3(u, v, 0);  // Point on projection plane
+        rayDirCam = normalize(pixelPos - rayOriginCam);
     }
     
-    // Iterative ray tracing with reflection/refraction
+    // Transform ray from Camera Space to Object Space
+    float3 rayOrigin = mul(_CameraToWorld, float4(rayOriginCam, 1.0)).xyz;
+    float3 rayDir = normalize(mul((float3x3)_CameraToWorld, rayDirCam));
+    
+    // ==========================================================================
+    // ITERATIVE RAY TRACING
+    // 
+    // Traces primary ray, then recursively follows reflection/refraction rays
+    // up to _MaxDepth bounces. Accumulates color with attenuation.
+    // ==========================================================================
+    
     float3 finalColor = float3(0, 0, 0);
-    float3 attenuation = float3(1, 1, 1); // Accumulated color filter
+    float3 attenuation = float3(1, 1, 1);
     
     Ray ray = CreateRay(rayOrigin, rayDir);
     
@@ -306,7 +362,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         
         if (!hit.hit)
         {
-            // Background from UI
+            // Ray escaped - add background color
             finalColor += attenuation * _BackgroundColor.rgb;
             break;
         }
@@ -330,21 +386,25 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             ior = mat.ior;
         }
         
-        // Calculate local shading (ambient + diffuse + specular highlights)
+        // =======================================================================
+        // LOCAL SHADING (ambient + diffuse + specular highlights)
+        // =======================================================================
+        
         float3 localColor = float3(0, 0, 0);
         
+        // Ambient component (constant, no shadows)
         if (_EnableAmbient == 1)
         {
             localColor += matColor * kAmbient;
         }
         
-        // Calculate light direction from scene light position
+        // Calculate light direction from point light
         float3 lightDir = normalize(_LightPosition - hit.position);
         float NdotL = max(0.0f, dot(hit.normal, lightDir));
         
         if (_EnableDiffuse == 1 && NdotL > 0.0)
         {
-            // Cast shadow ray with larger bias to prevent self-shadowing
+            // Cast shadow ray (with bias to prevent self-intersection)
             Ray shadowRay;
             shadowRay.origin = hit.position + hit.normal * (Epsilon * 100.0);
             shadowRay.direction = lightDir;
@@ -352,12 +412,13 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             
             HitRecord shadowHit = TraverseBVH(shadowRay);
             
-            // Only add diffuse if not in shadow
+            // Only add lighting if not in shadow
             if (!shadowHit.hit)
             {
+                // Diffuse (Lambertian)
                 localColor += matColor * kDiffuse * NdotL;
                 
-                // Add specular highlights (Blinn-Phong) - controlled by toggle
+                // Specular highlights (Blinn-Phong)
                 if (_EnableSpecular == 1 && kSpecular > 0.0)
                 {
                     float3 viewDir = normalize(-ray.direction);
@@ -368,38 +429,41 @@ void CSMain (uint3 id : SV_DispatchThreadID)
             }
         }
         
-        // Add local contribution
+        // Add local contribution with current attenuation
         finalColor += attenuation * localColor * _LightIntensity;
         
-        // Determine next ray (reflection or refraction) - NOT controlled by toggles
-        bool shouldReflect = (kSpecular > 0.0); // Always reflect if material allows
-        bool shouldRefract = (_EnableRefraction == 1 && kRefraction > 0.0); // Refraction still needs toggle
+        // =======================================================================
+        // RECURSIVE RAYS (reflection / refraction)
+        // =======================================================================
+        
+        bool shouldReflect = (kSpecular > 0.0);
+        bool shouldRefract = (_EnableRefraction == 1 && kRefraction > 0.0);
         
         if (!shouldReflect && !shouldRefract)
         {
-            // No recursive rays needed
-            break;
+            break;  // No recursive rays needed
         }
         
         if (shouldRefract && kRefraction > 0.0)
         {
-            // Refraction
+            // Calculate refraction using Snell's law
             float3 I = normalize(ray.direction);
             float3 N = hit.normal;
-            float eta = 1.0 / ior; // Assuming entering from air (ior=1)
+            float eta = 1.0 / ior;  // Assuming entering from air (ior=1)
             
-            // Check if we're exiting
+            // Check if ray is exiting the medium
             if (dot(I, N) > 0)
             {
                 N = -N;
-                eta = ior; // Exiting to air
+                eta = ior;  // Exiting to air
             }
             
+            // Compute refraction angle
             float k = 1.0 - eta * eta * (1.0 - dot(-I, N) * dot(-I, N));
             
             if (k >= 0.0)
             {
-                // Refract
+                // Refract ray
                 float3 refractDir = eta * I + (eta * dot(-I, N) - sqrt(k)) * N;
                 ray.origin = hit.position + refractDir * (Epsilon * 100.0);
                 ray.direction = normalize(refractDir);
@@ -418,7 +482,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         }
         else if (shouldReflect && kSpecular > 0.0)
         {
-            // Reflection
+            // Perfect mirror reflection
             float3 reflectDir = reflect(normalize(ray.direction), hit.normal);
             ray.origin = hit.position + hit.normal * (Epsilon * 100.0);
             ray.direction = normalize(reflectDir);
@@ -427,24 +491,27 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         }
     }
     
-    // Debug modes
-    if (_DebugMode == 1) // Depth visualization
+    // ==========================================================================
+    // DEBUG MODES
+    // ==========================================================================
+    
+    if (_DebugMode == 1)  // Depth visualization
     {
         HitRecord hit = TraverseBVH(CreateRay(rayOrigin, rayDir));
         if (hit.hit)
             finalColor = float3(hit.t / 100.0, hit.t / 100.0, hit.t / 100.0);
         else
-            finalColor = float3(1, 0, 0);
+            finalColor = float3(1, 0, 0);  // Red for misses
     }
-    else if (_DebugMode == 2) // Normals
+    else if (_DebugMode == 2)  // Normal visualization
     {
         HitRecord hit = TraverseBVH(CreateRay(rayOrigin, rayDir));
         if (hit.hit)
-            finalColor = hit.normal * 0.5 + 0.5;
+            finalColor = hit.normal * 0.5 + 0.5;  // Map [-1,1] to [0,1]
         else
-            finalColor = float3(0, 0, 1);
+            finalColor = float3(0, 0, 1);  // Blue for misses
     }
-    else if (_DebugMode == 3) // Hit visualization
+    else if (_DebugMode == 3)  // Hit visualization
     {
         HitRecord hit = TraverseBVH(CreateRay(rayOrigin, rayDir));
         finalColor = hit.hit ? float3(0, 1, 0) : float3(0.2, 0.2, 0.2);

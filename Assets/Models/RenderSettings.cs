@@ -1,26 +1,54 @@
 using UnityEngine;
 
-// Data container for render settings passed from UI to RayTracer
+/// <summary>
+/// Encapsulates all render settings passed from the UI to the ray tracer.
+/// Nullable fields indicate optional overrides; when null, scene file defaults are used.
+/// </summary>
 public struct RenderSettings
 {
+    // ===== Output Settings =====
+    
+    /// <summary>Custom output resolution. If null, uses scene file resolution.</summary>
     public Vector2Int? ResolutionOverride;
+    
+    /// <summary>Custom background color. If null, uses scene file background.</summary>
     public Color? BackgroundColorOverride;
+    
+    /// <summary>Light intensity multiplier (default: 1.0).</summary>
     public float LightIntensityScale;
     
-    // Camera Overrides
+    // ===== Camera Overrides =====
+    
+    /// <summary>Custom camera position. If null, uses scene file camera transform.</summary>
     public Vector3? CameraPositionOverride;
+    
+    /// <summary>Custom camera rotation (Euler angles). If null, uses scene file camera transform.</summary>
     public Vector3? CameraRotationOverride;
+    
+    /// <summary>Custom field of view in degrees. If null, uses scene file FOV.</summary>
     public float? CameraFovOverride;
 
-    // Renderer Settings
+    // ===== Renderer Settings =====
+    
+    /// <summary>Maximum ray recursion depth for reflections/refractions.</summary>
     public int MaxDepth;
     
-    // Toggles
+    // ===== Lighting Component Toggles =====
+    
+    /// <summary>Enable ambient lighting contribution.</summary>
     public bool EnableAmbient;
+    
+    /// <summary>Enable diffuse (Lambertian) lighting.</summary>
     public bool EnableDiffuse;
-    public bool EnableSpecular; // Reflection
+    
+    /// <summary>Enable specular reflections (mirror-like surfaces).</summary>
+    public bool EnableSpecular;
+    
+    /// <summary>Enable refraction (transparency/glass effects).</summary>
     public bool EnableRefraction;
     
-    // Projection
-    public bool IsOrthographic; // If true, use parallel rays instead of perspective
+    // ===== Projection Mode =====
+    
+    /// <summary>If true, use orthographic projection. If false, use perspective.</summary>
+    public bool IsOrthographic;
 }

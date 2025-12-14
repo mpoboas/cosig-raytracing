@@ -105,7 +105,8 @@
                     <ui:Button name="btn-load-data" text="Load Data" class="button" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
                     <ui:Button name="btn-save-image" text="Save Image" class="button" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
                     <ui:Button name="btn-load-image" text="Load Image" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
-                    <ui:Button text="Save Scene" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
+                    <ui:Button text="Save Scene" name="btn-save-scene" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
+                    <ui:Button text="Load Scene" name="btn-load-scene" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
                     <ui:Button name="btn-exit" text="Exit" style="width: 15%; height: 70%; border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 5px;" />
                 </ui:VisualElement>
             </ui:VisualElement>

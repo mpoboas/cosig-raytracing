@@ -898,24 +898,21 @@ public class SceneBuilder : MonoBehaviour
             tex.filterMode = FilterMode.Bilinear;
             tex.wrapMode = TextureWrapMode.Clamp;
             
-            // Set the texture as background image
+            // Set the texture as background image with proper scaling
             container.style.backgroundImage = new StyleBackground(tex);
-            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
             container.style.unityBackgroundImageTintColor = Color.white;
             
-            // Make container square (1:1 aspect ratio) by setting width equal to height
-            container.style.alignSelf = Align.Center;
+            // ScaleToFit maintains aspect ratio and centers the image
+            #pragma warning disable 0618 // Suppress deprecation warning
+            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+            #pragma warning restore 0618
             
-            // Use the height as the width to maintain 1:1 ratio
-            container.RegisterCallback<GeometryChangedEvent>(evt =>
-            {
-                float height = container.resolvedStyle.height;
-                if (height > 0)
-                {
-                    container.style.width = height;
-                }
-            });
+            // Ensure container fills available space
+            container.style.flexGrow = 1;
+            container.style.width = StyleKeyword.Auto;
+            container.style.height = new StyleLength(new Length(100, LengthUnit.Percent));
             
+            // Force repaint
             container.MarkDirtyRepaint();
         }
         else
@@ -936,26 +933,21 @@ public class SceneBuilder : MonoBehaviour
             tex.filterMode = FilterMode.Bilinear;
             tex.wrapMode = TextureWrapMode.Clamp;
             
-            // Set the texture as background image
+            // Set the texture as background image with proper scaling
             container.style.backgroundImage = new StyleBackground(tex);
-            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
             container.style.unityBackgroundImageTintColor = Color.white;
             
-            // Make container square (1:1 aspect ratio) by setting width equal to height
-            // This removes the red bars on the sides for square images
-            container.style.alignSelf = Align.Center;
+            // ScaleToFit maintains aspect ratio and centers the image
+            #pragma warning disable 0618 // Suppress deprecation warning
+            container.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+            #pragma warning restore 0618
             
-            // Use the height as the width to maintain 1:1 ratio
-            container.RegisterCallback<GeometryChangedEvent>(evt =>
-            {
-                float height = container.resolvedStyle.height;
-                if (height > 0)
-                {
-                    container.style.width = height;
-                }
-            });
+            // Ensure container fills available space
+            container.style.flexGrow = 1;
+            container.style.width = StyleKeyword.Auto;
+            container.style.height = new StyleLength(new Length(100, LengthUnit.Percent));
             
-            // Trigger initial sizing
+            // Force repaint
             container.MarkDirtyRepaint();
         }
         else
