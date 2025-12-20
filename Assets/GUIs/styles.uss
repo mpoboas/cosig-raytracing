@@ -2,6 +2,14 @@
     min-width: 20px;
 }
 
+.text-field-label-14 > .unity-label {
+    font-size: 14px;
+}
+
+.text-field-placeholder-14 > .unity-placeholder {
+    font-size: 14px;
+}
+
 .label-left-padding > .unity-label {
     padding-left: 5px;
 }
